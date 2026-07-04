@@ -1,0 +1,11 @@
+"""API health payload."""
+type Health {
+  status: String!
+  version: String!
+  timestamp: String!
+}
+
+type Query {
+  """Liveness probe for the GraphQL API."""
+  health: Health!
+}

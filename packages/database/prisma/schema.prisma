@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PlanTier {
+  starter
+  growth
+  scale
+  enterprise
+}
+
+enum ShopStatus {
+  active
+  paused
+  uninstalled
+}
+
+enum PlanStatus {
+  active
+  paused
+  archived
+}
+
+enum PlanType {
+  standard
+  prepaid
+  box
+}
+
+enum PricingStrategy {
+  percentage_discount
+  fixed_price
+  tiered
+}
+
+enum ContractStatus {
+  active
+  paused
+  cancelled
+  expired
+  payment_failed
+}
+
+enum HealthStatus {
+  healthy
+  at_risk
+  critical
+}
+
+enum OrderStatus {
+  pending
+  paid
+  fulfilled
+  cancelled
+  refunded
+}
+
+enum InterventionType {
+  skip_offer
+  discount_offer
+  pause_offer
+  swap_suggestion
+  loyalty_bonus
+  personal_outreach
+  dunning_retry
+  cancel_save
+}
+
+enum InterventionStatus {
+  pending
+  sent
+  opened
+  clicked
+  accepted
+  declined
+  expired
+}
+
+enum InterventionOutcome {
+  saved
+  churned
+  no_action
+  converted
+}
+
+enum EventSource {
+  system
+  merchant
+  customer
+  webhook
+  api
+  ai
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model Shop {
+  id              String     @id @default(cuid())
+  shopifyDomain   String     @unique @map("shopify_domain")
+  shopifyShopId   String     @unique @map("shopify_shop_id")
+  /// Application-layer encrypted access token (never store plaintext).
+  accessToken     String     @map("access_token")
+  planTier        PlanTier   @default(starter) @map("plan_tier")
+  status          ShopStatus @default(active)
+  settings        Json       @default("{}") @map("settings") @db.JsonB
+  billingSettings Json       @default("{}") @map("billing_settings") @db.JsonB
+  installedAt     DateTime   @default(now()) @map("installed_at")
+  uninstalledAt   DateTime?  @map("uninstalled_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  customers     Customer[]
+  plans         SubscriptionPlan[]
+  contracts     SubscriptionContract[]
+  orders        SubscriptionOrder[]
+  interventions Intervention[]
+  events        Event[]
+
+  @@index([status])
+  @@map("shops")
+}
+
+model Customer {
+  id                   String    @id @default(cuid())
+  shopId               String    @map("shop_id")
+  shopifyCustomerId    String    @map("shopify_customer_id")
+  email                String
+  firstName            String?   @map("first_name")
+  lastName             String?   @map("last_name")
+  phone                String?
+  totalSubscriptions   Int       @default(0) @map("total_subscriptions")
+  activeSubscriptions  Int       @default(0) @map("active_subscriptions")
+  lifetimeValue        Decimal   @default(0) @map("lifetime_value") @db.Decimal(12, 2)
+  firstOrderDate       DateTime? @map("first_order_date")
+  lastOrderDate        DateTime? @map("last_order_date")
+  acceptsMarketing     Boolean   @default(false) @map("accepts_marketing")
+  emailConsent         Boolean   @default(false) @map("email_consent")
+  smsConsent           Boolean   @default(false) @map("sms_consent")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  shop      Shop                   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  contracts SubscriptionContract[]
+  orders    SubscriptionOrder[]
+
+  @@unique([shopId, shopifyCustomerId])
+  @@index([shopId])
+  @@index([email])
+  @@map("customers")
+}
+
+model SubscriptionPlan {
+  id                 String          @id @default(cuid())
+  shopId             String          @map("shop_id")
+  name               String
+  description        String?
+  status             PlanStatus      @default(active)
+  planType           PlanType        @default(standard) @map("plan_type")
+  frequencies        Json            @default("[]") @db.JsonB
+  minimumCommitment  Int?            @map("minimum_commitment")
+  trialPeriodDays    Int             @default(0) @map("trial_period_days")
+  pricingStrategy    PricingStrategy @default(percentage_discount) @map("pricing_strategy")
+  discountValue      Decimal?        @map("discount_value") @db.Decimal(12, 2)
+  boxConfig          Json?           @map("box_config") @db.JsonB
+  productIds         String[]        @default([]) @map("product_ids") @db.Uuid
+  collectionIds      String[]        @default([]) @map("collection_ids") @db.Uuid
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  shop      Shop                   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  contracts SubscriptionContract[]
+
+  @@index([shopId])
+  @@index([status])
+  @@index([planType])
+  @@map("subscription_plans")
+}
+
+model SubscriptionContract {
+  id                  String         @id @default(cuid())
+  shopId              String         @map("shop_id")
+  customerId          String         @map("customer_id")
+  planId              String         @map("plan_id")
+  shopifyContractId   String         @map("shopify_contract_id")
+  status              ContractStatus @default(active)
+  billingPolicy       Json           @default("{}") @map("billing_policy") @db.JsonB
+  deliveryPolicy      Json           @default("{}") @map("delivery_policy") @db.JsonB
+  pricingPolicy       Json           @default("{}") @map("pricing_policy") @db.JsonB
+  nextBillingDate     DateTime?      @map("next_billing_date")
+  lastBillingDate     DateTime?      @map("last_billing_date")
+  lastOrderId         String?        @map("last_order_id")
+  totalCharges        Int            @default(0) @map("total_charges")
+  totalRevenue        Decimal        @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  boxItems            Json?          @map("box_items") @db.JsonB
+  churnRiskScore      Float?         @map("churn_risk_score")
+  healthStatus        HealthStatus   @default(healthy) @map("health_status")
+  predictedChurn14d   Float?         @map("predicted_churn_14d")
+  predictedChurn30d   Float?         @map("predicted_churn_30d")
+  cancelledAt         DateTime?      @map("cancelled_at")
+  cancellationReason  String?        @map("cancellation_reason")
+  cancellationNotes   String?        @map("cancellation_notes")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+
+  shop          Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer      Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  plan          SubscriptionPlan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+  orders        SubscriptionOrder[]
+  signals       SubscriberSignal[]
+  interventions Intervention[]
+  events        Event[]
+
+  @@unique([shopId, shopifyContractId])
+  @@index([shopId])
+  @@index([customerId])
+  @@index([status])
+  @@index([nextBillingDate])
+  /// Partial index (WHERE churn_risk_score IS NOT NULL) is applied in the migration SQL.
+  @@index([churnRiskScore])
+  @@index([healthStatus])
+  @@map("subscription_contracts")
+}
+
+model SubscriptionOrder {
+  id                 String      @id @default(cuid())
+  shopId             String      @map("shop_id")
+  customerId         String      @map("customer_id")
+  contractId         String      @map("contract_id")
+  shopifyOrderId     String      @map("shopify_order_id")
+  orderNumber        String      @map("order_number")
+  totalPrice         Decimal     @map("total_price") @db.Decimal(12, 2)
+  currency           String      @default("USD") @db.Char(3)
+  status             OrderStatus @default(pending)
+  billingCycle       Int?        @map("billing_cycle")
+  isOneOff           Boolean     @default(false) @map("is_one_off")
+  fulfillmentStatus  String?     @map("fulfillment_status")
+  trackingNumber     String?     @map("tracking_number")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  shop     Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contract SubscriptionContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, shopifyOrderId])
+  @@index([contractId])
+  @@index([shopId])
+  @@index([customerId])
+  @@map("subscription_orders")
+}
+
+model SubscriberSignal {
+  id                         String   @id @default(cuid())
+  contractId                 String   @map("contract_id")
+  daysSinceLastEngagement    Int?     @map("days_since_last_engagement")
+  portalLoginCount30d        Int      @default(0) @map("portal_login_count_30d")
+  productSwapCount30d        Int      @default(0) @map("product_swap_count_30d")
+  skipCount90d               Int      @default(0) @map("skip_count_90d")
+  pauseCountLifetime         Int      @default(0) @map("pause_count_lifetime")
+  cadenceDriftDays           Int?     @map("cadence_drift_days")
+  avgOrderValue              Decimal? @map("avg_order_value") @db.Decimal(12, 2)
+  orderFrequencyDays         Float?   @map("order_frequency_days")
+  paymentFailureCount30d     Int      @default(0) @map("payment_failure_count_30d")
+  paymentFailureCount90d     Int      @default(0) @map("payment_failure_count_90d")
+  daysSinceLastPaymentFailure Int?    @map("days_since_last_payment_failure")
+  supportTicketCount30d      Int      @default(0) @map("support_ticket_count_30d")
+  supportTicketSentiment     Float?   @map("support_ticket_sentiment")
+  emailOpenRate30d           Float?   @map("email_open_rate_30d")
+  emailClickRate30d          Float?   @map("email_click_rate_30d")
+  smsOptOut                  Boolean  @default(false) @map("sms_opt_out")
+  tenureDays                 Int      @default(0) @map("tenure_days")
+  totalRevenue               Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  subscriptionCount          Int      @default(1) @map("subscription_count")
+  predictedChurn14d          Float?   @map("predicted_churn_14d")
+  predictedChurn30d          Float?   @map("predicted_churn_30d")
+  modelVersion               String   @map("model_version")
+  calculatedAt               DateTime @default(now()) @map("calculated_at")
+  createdAt                  DateTime @default(now()) @map("created_at")
+
+  contract SubscriptionContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([calculatedAt])
+  @@index([predictedChurn14d])
+  @@map("subscriber_signals")
+}
+
+model Intervention {
+  id               String               @id @default(cuid())
+  shopId           String               @map("shop_id")
+  contractId       String               @map("contract_id")
+  interventionType InterventionType     @map("intervention_type")
+  triggerReason    String               @map("trigger_reason")
+  messageSubject   String?              @map("message_subject")
+  messageBody      String?              @map("message_body")
+  offerValue       Json?                @map("offer_value") @db.JsonB
+  status           InterventionStatus   @default(pending)
+  sentAt           DateTime?            @map("sent_at")
+  openedAt         DateTime?            @map("opened_at")
+  clickedAt        DateTime?            @map("clicked_at")
+  respondedAt      DateTime?            @map("responded_at")
+  outcome          InterventionOutcome?
+  revenueImpact    Decimal?             @map("revenue_impact") @db.Decimal(12, 2)
+  isAuto           Boolean              @default(true) @map("is_auto")
+  createdBy        String?              @map("created_by")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  shop     Shop                 @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  contract SubscriptionContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([shopId])
+  @@index([interventionType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("interventions")
+}
+
+model Event {
+  id           String      @id @default(cuid())
+  shopId       String      @map("shop_id")
+  contractId   String?     @map("contract_id")
+  eventType    String      @map("event_type")
+  eventSubtype String?     @map("event_subtype")
+  payload      Json        @default("{}") @db.JsonB
+  source       EventSource @default(system)
+  userAgent    String?     @map("user_agent")
+  ipAddress    Unsupported("inet")? @map("ip_address")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  shop     Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  contract SubscriptionContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([contractId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("events")
+}
