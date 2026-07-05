@@ -11,10 +11,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-test-build:
-    name: Lint, Test & Build
+  lint-typecheck:
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm lint
+      - run: pnpm typecheck
 
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
     services:
       postgres:
         image: postgres:15-alpine
@@ -29,7 +46,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -39,55 +55,162 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-
     env:
       DATABASE_URL: postgresql://retain:retain@localhost:5432/retain
       REDIS_URL: redis://localhost:6379
       NODE_ENV: test
-
+      JWT_SECRET: test-jwt-secret
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      SHOPIFY_API_KEY: test-api-key
+      SHOPIFY_API_SECRET: test-api-secret
+      SHOPIFY_APP_URL: https://api-test.example.com
+      ADMIN_APP_URL: https://admin-test.example.com
+      AI_SERVICE_URL: http://localhost:8000
+      SKIP_BACKGROUND_WORKERS: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: apps/ai/requirements.txt
-
-      - name: Install Node dependencies
-        run: pnpm install --frozen-lockfile
-
+      - run: pnpm install --frozen-lockfile
       - name: Install Python dependencies
         working-directory: apps/ai
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
-
-      - name: Generate Prisma client
-        run: pnpm db:generate
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Test
+      - run: pnpm db:generate
+      - name: API unit tests (Jest + coverage)
+        working-directory: apps/api
+        run: pnpm test:unit
+      - name: API legacy tests
+        working-directory: apps/api
+        run: pnpm test:legacy
+      - name: Admin tests (Vitest + coverage)
+        working-directory: apps/admin
         run: pnpm test
+      - name: Portal tests (Vitest + coverage)
+        working-directory: apps/portal
+        run: pnpm test
+      - name: AI tests (pytest + coverage)
+        working-directory: apps/ai
+        run: pnpm test
+      - name: Webhook worker tests
+        run: pnpm --filter @retain/webhook-worker test
+      - name: Shared & database tests
+        run: pnpm --filter @retain/shared test && pnpm --filter @retain/database test
 
-      - name: Build
-        run: pnpm build
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: retain
+          POSTGRES_PASSWORD: retain
+          POSTGRES_DB: retain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U retain -d retain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://retain:retain@localhost:5432/retain
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      JWT_SECRET: test-jwt-secret
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      SHOPIFY_API_KEY: test-api-key
+      SHOPIFY_API_SECRET: test-api-secret
+      SHOPIFY_APP_URL: https://api-test.example.com
+      ADMIN_APP_URL: https://admin-test.example.com
+      AI_SERVICE_URL: http://localhost:8000
+      SKIP_BACKGROUND_WORKERS: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:migrate:deploy
+      - name: API integration tests
+        working-directory: apps/api
+        run: pnpm test:integration
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pnpm install --frozen-lockfile
+      - name: Install Python dependencies
+        working-directory: apps/ai
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+      - run: pnpm db:generate
+      - run: pnpm build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm build
+      - name: Install Playwright
+        working-directory: e2e
+        run: pnpm install && pnpm exec playwright install chromium
+      - name: Run E2E tests
+        working-directory: e2e
+        run: pnpm test
+        env:
+          CI: true

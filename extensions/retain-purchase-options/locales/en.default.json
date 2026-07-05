@@ -1,0 +1,11 @@
+{
+  "name": "Retain: Subscribe",
+  "settings": {
+    "heading": {
+      "label": "Heading"
+    },
+    "one_time_label": {
+      "label": "One-time purchase label"
+    }
+  }
+}

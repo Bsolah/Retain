@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "retain-api.fullname" . }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "retain-api.name" . }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: retain-webhook-worker
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: retain-ai
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}

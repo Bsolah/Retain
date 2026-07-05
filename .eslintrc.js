@@ -36,6 +36,16 @@ module.exports = {
   },
   overrides: [
     {
+      files: ['extensions/**/*.js'],
+      env: {
+        browser: true,
+      },
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'script',
+      },
+    },
+    {
       files: ['apps/admin/**/*.{ts,tsx}', 'apps/portal/**/*.{ts,tsx}'],
       plugins: ['react', 'react-hooks'],
       extends: [

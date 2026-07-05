@@ -1,0 +1,24 @@
+---
+description: TypeScript strict-mode conventions for Retain apps and packages
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript
+
+- Strict mode is on (`tsconfig.base.json`). Do not weaken `strict`, `noUncheckedIndexedAccess`, or related flags.
+- Prefer `unknown` over `any`. ESLint `@typescript-eslint/no-explicit-any` is a warning — avoid introducing new `any`.
+- Do not use `{}` as a type (banned by `@typescript-eslint/ban-types`). Use `object`, `Record<string, unknown>`, or a named interface.
+- Export both runtime values and types when CJS interop requires it (see `@retain/database` `PrismaClient` pattern: `export const` + `export type` with the same name).
+- Node ESM packages use `.js` extensions in relative imports (`from './foo.js'`).
+- After changing public types in `packages/*`, rebuild or ensure dependents typecheck (`pnpm typecheck`).
+
+```typescript
+// ❌ BAD — value-only export used as a type under isolated/CJS interop
+export { PrismaClient };
+// consumer: type X = { db: PrismaClient } // TS2749
+
+// ✅ GOOD
+export const PrismaClient = PrismaClientConstructor;
+export type PrismaClient = PrismaClientType;
+```

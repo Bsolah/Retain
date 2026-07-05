@@ -2,6 +2,7 @@ node_modules
 dist
 .turbo
 coverage
+.shopify
 pnpm-lock.yaml
 apps/ai/.venv
 *.generated.*

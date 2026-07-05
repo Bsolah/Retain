@@ -1,4 +1,10 @@
 import { Queue } from 'bullmq';
+import {
+  queueForTopic,
+  WEBHOOK_QUEUES,
+  type ShopCleanupJob,
+  type ShopifyWebhookJob,
+} from '@retain/shared';
 import { env } from '../env.js';
 import { registerQueueForShutdown } from './shutdown.js';
 
@@ -14,42 +20,49 @@ function redisConnection() {
   };
 }
 
-let webhookQueue: Queue | undefined;
-let cleanupQueue: Queue | undefined;
+const queues = new Map<string, Queue>();
 
-export function getWebhookQueue(): Queue {
-  if (!webhookQueue) {
-    webhookQueue = new Queue('shopify-webhooks', {
-      connection: redisConnection(),
-    });
-    registerQueueForShutdown(webhookQueue);
-  }
+function getQueue(name: string): Queue {
+  const existing = queues.get(name);
+  if (existing) return existing;
 
-  return webhookQueue;
+  const queue = new Queue(name, { connection: redisConnection() });
+  registerQueueForShutdown(queue);
+  queues.set(name, queue);
+  return queue;
+}
+
+export function getWebhookQueue(topic?: string): Queue {
+  const name = topic ? queueForTopic(topic) : WEBHOOK_QUEUES.legacy;
+  return getQueue(name);
 }
 
 export function getCleanupQueue(): Queue {
-  if (!cleanupQueue) {
-    cleanupQueue = new Queue('shop-cleanup', {
-      connection: redisConnection(),
-    });
-    registerQueueForShutdown(cleanupQueue);
-  }
-
-  return cleanupQueue;
+  return getQueue(WEBHOOK_QUEUES.cleanup);
 }
 
-export type ShopifyWebhookJob = {
-  topic: string;
-  shopDomain: string;
-  webhookId: string;
-  payload: unknown;
-  receivedAt: string;
-};
+export type { ShopifyWebhookJob, ShopCleanupJob };
 
-export type ShopCleanupJob = {
-  shopId: string;
-  shopifyDomain: string;
-  reason: 'app_uninstalled';
-  scheduledAt: string;
-};
+export async function enqueueWebhookJob(
+  job: ShopifyWebhookJob,
+  options?: { hmac?: string; rawBody?: string },
+): Promise<void> {
+  const queue = getWebhookQueue(job.topic);
+  await queue.add(
+    'shopify-webhook',
+    {
+      ...job,
+      hmac: options?.hmac,
+      rawBody: options?.rawBody,
+    },
+    {
+      jobId: job.webhookId,
+      removeOnComplete: 1000,
+      removeOnFail: 5000,
+      attempts: 3,
+      backoff: {
+        type: 'custom',
+      },
+    },
+  );
+}

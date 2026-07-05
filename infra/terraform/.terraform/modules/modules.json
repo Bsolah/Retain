@@ -1,0 +1,31 @@
+{
+  "Modules": [
+    {
+      "Key": "cloudfront",
+      "Source": "./modules/cloudfront",
+      "Dir": "modules/cloudfront"
+    },
+    { "Key": "ecs", "Source": "./modules/ecs", "Dir": "modules/ecs" },
+    {
+      "Key": "elasticache",
+      "Source": "./modules/elasticache",
+      "Dir": "modules/elasticache"
+    },
+    { "Key": "s3", "Source": "./modules/s3", "Dir": "modules/s3" },
+    { "Key": "iam", "Source": "./modules/iam", "Dir": "modules/iam" },
+    {
+      "Key": "logging",
+      "Source": "./modules/logging",
+      "Dir": "modules/logging"
+    },
+    { "Key": "rds", "Source": "./modules/rds", "Dir": "modules/rds" },
+    { "Key": "vpc", "Source": "./modules/vpc", "Dir": "modules/vpc" },
+    { "Key": "", "Source": "", "Dir": "." },
+    { "Key": "alb", "Source": "./modules/alb", "Dir": "modules/alb" },
+    {
+      "Key": "cloudwatch",
+      "Source": "./modules/cloudwatch",
+      "Dir": "modules/cloudwatch"
+    }
+  ]
+}

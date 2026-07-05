@@ -8,10 +8,31 @@ import mercurius from 'mercurius';
 import { env } from './env.js';
 import { connectRedis, disconnectRedis, getRedis } from './lib/redis.js';
 import { drainQueues } from './lib/shutdown.js';
+import { registerAnalyticsRoutes } from './routes/analytics.js';
+import { registerCancelFlowRoutes } from './routes/cancel-flow.js';
+import { registerDunningRoutes } from './routes/dunning.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerPortalApiRoutes } from './routes/portal-api.js';
+import { registerPortalAuthRoutes } from './routes/portal-auth.js';
+import { registerMigrationRoutes } from './routes/migrations.js';
+import { registerNotificationRoutes } from './routes/notifications.js';
+import { registerSendGridWebhookRoutes } from './routes/sendgrid-webhooks.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { mercuriusConfig, registerQueryComplexityHook } from './schema.js';
+import {
+  startBillingScheduler,
+  stopBillingScheduler,
+} from './services/billing-scheduler.js';
+import {
+  startDunningScheduler,
+  stopDunningScheduler,
+} from './workers/dunning-scheduler.js';
+import {
+  startMigrationWorkers,
+  stopMigrationWorkers,
+} from './workers/migration-worker.js';
+import { startWebhookProcessor } from './workers/webhook-processor.js';
 
 const SHOPIFY_ADMIN_ORIGINS = [
   /^https:\/\/admin\.shopify\.com$/,
@@ -50,9 +71,23 @@ export async function buildServer(): Promise<FastifyInstance> {
   await connectRedis();
   const redis = getRedis();
 
+  // Allow embedding in Shopify Admin (default helmet frameguard blocks iframes).
   await app.register(helmet, {
-    contentSecurityPolicy: env.NODE_ENV === 'production',
+    contentSecurityPolicy:
+      env.NODE_ENV === 'production'
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              frameAncestors: [
+                'https://admin.shopify.com',
+                'https://*.myshopify.com',
+                'https://admin.shopify.com',
+              ],
+            },
+          }
+        : false,
     crossOriginEmbedderPolicy: false,
+    frameguard: false,
   });
 
   await app.register(cors, {
@@ -62,9 +97,10 @@ export async function buildServer(): Promise<FastifyInstance> {
         return;
       }
 
-      const allowed = SHOPIFY_ADMIN_ORIGINS.some((pattern) =>
-        pattern.test(origin),
-      );
+      const portalOrigin = env.PORTAL_URL.replace(/\/$/, '');
+      const allowed =
+        origin === portalOrigin ||
+        SHOPIFY_ADMIN_ORIGINS.some((pattern) => pattern.test(origin));
 
       if (allowed || env.NODE_ENV !== 'production') {
         callback(null, true);
@@ -88,6 +124,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     allowList: (request) =>
       request.url.startsWith('/health') ||
       request.url.startsWith('/auth/') ||
+      request.url.startsWith('/portal/') ||
+      request.url.startsWith('/cancel-flow/') ||
+      request.url.startsWith('/dunning/') ||
+      request.url.startsWith('/migrations/') ||
       request.url.startsWith('/webhooks/'),
     keyGenerator: (request) => shopRateLimitKey(request),
     errorResponseBuilder: (_request, context) => ({
@@ -99,10 +139,27 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
+  await registerAnalyticsRoutes(app);
+  await registerPortalAuthRoutes(app);
+  await registerPortalApiRoutes(app);
+  await registerCancelFlowRoutes(app);
+  await registerDunningRoutes(app);
+  await registerMigrationRoutes(app);
+  await registerNotificationRoutes(app);
+  await registerSendGridWebhookRoutes(app);
   await registerWebhookRoutes(app);
 
   await app.register(mercurius, mercuriusConfig);
   await registerQueryComplexityHook(app);
+
+  if (env.PROCESS_WEBHOOKS_IN_API && !env.SKIP_BACKGROUND_WORKERS) {
+    startWebhookProcessor();
+  }
+  if (!env.SKIP_BACKGROUND_WORKERS) {
+    startBillingScheduler();
+    startDunningScheduler();
+    startMigrationWorkers();
+  }
 
   app.setErrorHandler((error, request, reply) => {
     request.log.error({ err: error }, 'Unhandled request error');
@@ -181,6 +238,9 @@ function registerGracefulShutdown(app: FastifyInstance): void {
     app.log.info({ signal }, 'Graceful shutdown started');
 
     try {
+      stopBillingScheduler();
+      stopDunningScheduler();
+      await stopMigrationWorkers();
       await app.close();
       await drainQueues();
       await prisma.$disconnect();

@@ -1,33 +1,56 @@
 export const MAX_QUERY_COMPLEXITY = 1000;
 
-type AstNode = {
-  kind?: string;
-  [key: string]: unknown;
-};
+/** Only follow these keys — GraphQL AST nodes often have circular `loc`/`parent` links. */
+const WALK_KEYS = new Set([
+  'definitions',
+  'selectionSet',
+  'selections',
+  'arguments',
+  'directives',
+  'selectionSet',
+  'variableDefinitions',
+  'operation',
+  'type',
+  'typeCondition',
+  'fields',
+  'values',
+  'value',
+]);
 
 /**
- * Estimate query complexity by counting fields in the operation AST.
- * Uses a plain object walk so we never mix GraphQL package realms
- * (pnpm can install parallel `graphql` copies used by Mercurius vs app code).
+ * Estimate query complexity by counting Field nodes.
+ * Uses a visited set and allowlisted keys to avoid circular AST references.
  */
 export function estimateDocumentComplexity(document: unknown): number {
-  return walk(document);
+  const visited = new WeakSet<object>();
+  return walk(document, visited);
 }
 
-function walk(node: unknown): number {
+function walk(node: unknown, visited: WeakSet<object>): number {
   if (!node || typeof node !== 'object') {
     return 0;
   }
 
+  if (visited.has(node)) {
+    return 0;
+  }
+  visited.add(node);
+
   if (Array.isArray(node)) {
-    return node.reduce<number>((total, child) => total + walk(child), 0);
+    return node.reduce<number>(
+      (total, child) => total + walk(child, visited),
+      0,
+    );
   }
 
-  const astNode = node as AstNode;
-  let total = astNode.kind === 'Field' ? 1 : 0;
+  const record = node as Record<string, unknown>;
+  let total = record.kind === 'Field' ? 1 : 0;
 
-  for (const value of Object.values(astNode)) {
-    total += walk(value);
+  for (const [key, value] of Object.entries(record)) {
+    if (!WALK_KEYS.has(key)) {
+      continue;
+    }
+    total += walk(value, visited);
   }
 
   return total;

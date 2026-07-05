@@ -1,22 +1,5 @@
-from datetime import datetime, timezone
+"""Backward-compatible entrypoint. Prefer `src.main:app`. """
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from src.main import app
 
-app = FastAPI(
-    title="Retain AI",
-    description="AI service for Retain: Revenue Multiplier",
-    version="0.0.0",
-)
-
-
-@app.get("/health")
-async def health() -> JSONResponse:
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "ok",
-            "service": "ai",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        },
-    )
+__all__ = ["app"]

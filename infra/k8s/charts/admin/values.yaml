@@ -1,0 +1,34 @@
+replicaCount: 2
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/retain-admin
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  host: admin.retain.app
+  tlsSecretName: retain-admin-tls
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  minAvailable: 1

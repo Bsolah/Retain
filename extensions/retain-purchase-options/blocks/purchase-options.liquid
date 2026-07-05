@@ -1,0 +1,123 @@
+{% comment %}
+  Retain purchase options — renders Shopify selling plans attached to this product.
+  Group name = Retain plan name; each frequency is one option within the group.
+{% endcomment %}
+
+{%- assign current_variant = product.selected_or_first_available_variant -%}
+{%- assign product_form_id = 'product-form-' | append: section.id -%}
+
+{% if product.selling_plan_groups.size > 0 %}
+  <div
+    class="retain-purchase-options"
+    data-retain-purchase-options
+    data-section-id="{{ section.id }}"
+    data-form-id="{{ product_form_id }}"
+    {{ block.shopify_attributes }}
+  >
+    {% if block.settings.heading != blank %}
+      <p class="retain-purchase-options__heading">{{ block.settings.heading }}</p>
+    {% endif %}
+
+    {% for variant in product.variants %}
+      {% if variant.selling_plan_allocations.size > 0 %}
+        <div
+          class="retain-purchase-options__variant{% unless variant.id == current_variant.id %} retain-purchase-options--hidden{% endunless %}"
+          data-variant-id="{{ variant.id }}"
+        >
+          <fieldset class="retain-purchase-options__fieldset">
+            <legend class="retain-purchase-options__legend">
+              {{ block.settings.heading | default: 'Purchase options' }}
+            </legend>
+
+            {% unless product.requires_selling_plan %}
+              <label class="retain-purchase-options__option">
+                <input
+                  type="radio"
+                  name="retain_purchase_option_{{ section.id }}_{{ variant.id }}"
+                  value=""
+                  data-selling-plan-id=""
+                  checked
+                />
+                <span>{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
+              </label>
+            {% endunless %}
+
+            {% for group in product.selling_plan_groups %}
+              {% assign group_plan_count = 0 %}
+              {% for allocation in variant.selling_plan_allocations %}
+                {% if allocation.selling_plan_group_id == group.id %}
+                  {% assign group_plan_count = group_plan_count | plus: 1 %}
+                {% endif %}
+              {% endfor %}
+
+              {% if group_plan_count > 0 %}
+                {% assign rendered_plan_ids = '' %}
+                {% for allocation in variant.selling_plan_allocations %}
+                  {% if allocation.selling_plan_group_id == group.id %}
+                    {% assign plan_id = allocation.selling_plan.id | append: '' %}
+                    {% assign plan_token = plan_id | prepend: ',' | append: ',' %}
+                    {% unless rendered_plan_ids contains plan_token %}
+                      {% assign rendered_plan_ids = rendered_plan_ids | append: plan_token %}
+
+                      {% if group_plan_count == 1 %}
+                        {% assign option_label = group.name %}
+                      {% else %}
+                        {% assign frequency_label = allocation.selling_plan.options.first
+                          | default: allocation.selling_plan.name %}
+                        {% assign option_label = group.name | append: ' — ' | append: frequency_label %}
+                      {% endif %}
+
+                      <label class="retain-purchase-options__option">
+                        <input
+                          type="radio"
+                          name="retain_purchase_option_{{ section.id }}_{{ variant.id }}"
+                          value="{{ allocation.selling_plan.id }}"
+                          data-selling-plan-id="{{ allocation.selling_plan.id }}"
+                          {% if product.requires_selling_plan and forloop.first %}checked{% endif %}
+                        />
+                        <span>{{ option_label }}</span>
+                        <span class="retain-purchase-options__price">{{ allocation.price | money }}</span>
+                      </label>
+                    {% endunless %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+          </fieldset>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <input
+      type="hidden"
+      name="selling_plan"
+      class="retain-selling-plan-input"
+      form="{{ product_form_id }}"
+      value=""
+    />
+  </div>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Retain: Subscribe",
+  "target": "section",
+  "templates": ["product"],
+  "stylesheet": "retain-purchase-options.css",
+  "javascript": "retain-purchase-options.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Purchase options"
+    },
+    {
+      "type": "text",
+      "id": "one_time_label",
+      "label": "One-time purchase label",
+      "default": "One-time purchase"
+    }
+  ]
+}
+{% endschema %}

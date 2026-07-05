@@ -1,0 +1,134 @@
+# Full local stack — infrastructure + application containers.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.apps.yml up -d --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: retain-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env.development
+    environment:
+      PORT: "3001"
+      DATABASE_URL: postgresql://retain:retain@postgres:5432/retain
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai:8000
+      ADMIN_APP_URL: http://localhost:5173
+      PORTAL_URL: http://localhost:5174
+      SKIP_BACKGROUND_WORKERS: "false"
+      PROCESS_WEBHOOKS_IN_API: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  webhook-worker:
+    build:
+      context: .
+      dockerfile: apps/webhook-worker/Dockerfile
+    container_name: retain-webhook-worker
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env.development
+    environment:
+      PORT: "3002"
+      DATABASE_URL: postgresql://retain:retain@postgres:5432/retain
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ai:
+    build:
+      context: .
+      dockerfile: apps/ai/Dockerfile
+    container_name: retain-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.development
+    environment:
+      DATABASE_URL: postgresql://retain:retain@postgres:5432/retain
+      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_URL: http://retain:retain@clickhouse:8123/retain
+      API_URL: http://api:3001
+      ENABLE_SCHEDULER: "true"
+      MODELS_URI_PREFIX: /app/models/churn
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3001
+        VITE_API_PUBLIC_URL: http://localhost:3001
+        VITE_SHOPIFY_API_KEY: ${SHOPIFY_API_KEY:-replace-me}
+        VITE_SHOPIFY_APP_URL: http://localhost:5173
+    container_name: retain-admin
+    restart: unless-stopped
+    ports:
+      - "5173:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  portal:
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3001
+        VITE_PORTAL_URL: http://localhost:5174
+    container_name: retain-portal
+    restart: unless-stopped
+    ports:
+      - "5174:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/migrate.Dockerfile
+    container_name: retain-migrate
+    env_file:
+      - .env.development
+    environment:
+      DATABASE_URL: postgresql://retain:retain@postgres:5432/retain
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate

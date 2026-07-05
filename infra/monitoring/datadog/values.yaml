@@ -1,0 +1,44 @@
+# Datadog Agent — ECS Fargate sidecar or EKS DaemonSet
+
+datadog:
+  apiKeyExistingSecret: datadog-secret
+  site: datadoghq.com
+  logs:
+    enabled: true
+    containerCollectAll: true
+  apm:
+    portEnabled: true
+    instrumentation:
+      enabled: true
+      libVersions:
+        js: "5"
+        python: "2"
+  processAgent:
+    enabled: true
+  kubeStateMetricsEnabled: true
+
+clusterAgent:
+  enabled: true
+  metricsProvider:
+    enabled: true
+
+agents:
+  tolerations: []
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# ECS task definition sidecar snippet (add to api/ai/worker task defs):
+# {
+#   "name": "datadog-agent",
+#   "image": "public.ecr.aws/datadog/agent:latest",
+#   "essential": false,
+#   "environment": [
+#     { "name": "DD_API_KEY", "valueFrom": "arn:aws:secretsmanager:..." },
+#     { "name": "DD_SITE", "value": "datadoghq.com" },
+#     { "name": "ECS_FARGATE", "value": "true" },
+#     { "name": "DD_APM_ENABLED", "value": "true" },
+#     { "name": "DD_LOGS_ENABLED", "value": "true" }
+#   ]
+# }

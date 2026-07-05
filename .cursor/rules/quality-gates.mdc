@@ -1,0 +1,29 @@
+---
+description: Mandatory lint, typecheck, and Prettier gates before finishing work
+alwaysApply: true
+---
+
+# Quality Gates
+
+Before considering any code change complete, run and fix failures:
+
+```bash
+pnpm check
+```
+
+That runs, in order:
+
+1. `pnpm lint` — ESLint (includes Prettier-as-ESLint via `prettier/prettier`)
+2. `pnpm typecheck` — TypeScript strict checks across the monorepo
+3. `pnpm format:check` — Prettier formatting check
+
+## Rules
+
+- Do **not** skip these gates, use `--no-verify`, or disable rules to land broken code.
+- If only one package changed, still prefer `pnpm check`. For a faster loop while iterating you may run package-scoped commands, but **always** finish with full `pnpm check`.
+- Generated files under `**/generated/**` are ESLint-ignored; do not hand-edit them to silence lint — regenerate with the package's `codegen` / `generate` script.
+- Pre-commit (Husky) runs `lint-staged` (ESLint + Prettier on staged files) and `pnpm typecheck`. Keep that green; do not weaken `.husky/pre-commit`.
+
+## After fixes
+
+Re-run `pnpm check` until it exits 0. Summarize only if something remains blocked (e.g. missing env for a package script).

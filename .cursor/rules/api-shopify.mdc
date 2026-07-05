@@ -1,0 +1,14 @@
+---
+description: API and Shopify integration conventions for apps/api
+globs: "apps/api/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# API / Shopify
+
+- Keep OAuth, webhooks, and session middleware in their existing modules (`routes/auth.ts`, `routes/webhooks.ts`, `middleware/*`, `services/*`).
+- Encrypt Shopify access tokens with `lib/encryption.ts` (AES-256-GCM) before DB write; never store plaintext.
+- Webhook handlers must verify HMAC, use Redis idempotency, queue work (BullMQ), and return **200** on processing failures (401 only for invalid HMAC).
+- GraphQL is schema-first: edit `src/graphql/schema.graphql`, run `pnpm --filter @retain/api codegen`. Do not hand-edit `src/generated/**`.
+- Validate env with `envalid` in `src/env.ts` when adding required config.
+- After API changes, run `pnpm check` (or at least `pnpm --filter @retain/api typecheck` and lint) before finishing.

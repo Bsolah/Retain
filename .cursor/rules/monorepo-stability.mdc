@@ -1,0 +1,37 @@
+---
+description: Retain monorepo stability — minimal diffs, workspace boundaries, Prisma/ESM pitfalls
+alwaysApply: true
+---
+
+# Monorepo Stability
+
+Retain is a pnpm + Turborepo monorepo (`apps/*`, `packages/*`). Prefer small, reversible changes.
+
+## Scope
+
+- Change only what the task requires. No drive-by refactors or unrelated files.
+- Match existing naming, imports (`*.js` extensions in ESM TS), and patterns in neighboring code.
+- Do not add business logic to scaffold/health paths unless asked.
+
+## Packages
+
+| Package | Role |
+| --- | --- |
+| `@retain/api` | Fastify + Mercurius, Shopify OAuth/webhooks |
+| `@retain/database` | Prisma schema, client, seed |
+| `@retain/shared` | Shared types/constants |
+| `@retain/admin` / `@retain/portal` | Vite frontends |
+| `@retain/ai` | Python FastAPI (venv under `apps/ai/.venv`) |
+| `@retain/webhook-worker` | BullMQ worker |
+
+- Import shared code via workspace packages (`@retain/database`, `@retain/shared`), not deep relative paths across apps.
+- After `pnpm install` or schema changes, run `pnpm db:generate` if Prisma client is missing or stale.
+- `@prisma/client` is CJS: use `@retain/database`'s exports (`PrismaClient` value + type). Do not reintroduce bare named ESM imports that break under tsx/Node.
+
+## Infra ports (local)
+
+Postgres `5433`, Redis `6380`, ClickHouse `8123` — do not bind default `5432`/`6379` (used by other stacks).
+
+## Secrets
+
+Never commit `.env`. Use `.env.example` templates only.

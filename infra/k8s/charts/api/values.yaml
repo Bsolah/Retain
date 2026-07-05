@@ -1,0 +1,50 @@
+replicaCount: 3
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/retain-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 3001
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.retain.app
+  tlsSecretName: retain-api-tls
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  minAvailable: 2
+
+env:
+  NODE_ENV: production
+  PORT: "3001"
+  HOST: "0.0.0.0"
+  PROCESS_WEBHOOKS_IN_API: "false"
+  SKIP_BACKGROUND_WORKERS: "false"
+
+secretRefs:
+  - retain-api-secrets
+
+networkPolicy:
+  allowFrom:
+    - retain-webhook-worker
+    - retain-ai
+    - ingress-nginx

@@ -1,0 +1,30 @@
+{
+  "title": "Retain — API Latency",
+  "description": "p50/p95/p99 latency for Retain API endpoints",
+  "widgets": [
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "API request duration (p95)",
+        "requests": [
+          {
+            "q": "p95:trace.fastify.request{service:retain-api,env:$env}",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "5xx rate (last 15m)",
+        "requests": [
+          {
+            "q": "sum:trace.fastify.request.errors{service:retain-api,env:$env}.as_rate()"
+          }
+        ]
+      }
+    }
+  ],
+  "template_variables": [{ "name": "env", "default": "production" }]
+}

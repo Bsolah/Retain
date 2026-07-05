@@ -6,8 +6,8 @@ import {
 } from '../constants/webhooks.js';
 import { encrypt } from '../lib/encryption.js';
 import {
+  enqueueWebhookJob,
   getCleanupQueue,
-  getWebhookQueue,
   type ShopCleanupJob,
   type ShopifyWebhookJob,
 } from '../lib/queues.js';
@@ -101,12 +101,11 @@ async function handleWebhook(
       receivedAt: new Date().toISOString(),
     };
 
-    await getWebhookQueue().add('shopify-webhook', job, {
-      jobId: webhookId,
-      removeOnComplete: 1000,
-      removeOnFail: 5000,
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 2000 },
+    const hmacHeader = getHeaderValue(request.headers['x-shopify-hmac-sha256']);
+
+    await enqueueWebhookJob(job, {
+      hmac: hmacHeader,
+      rawBody: request.rawBody?.toString('utf8'),
     });
 
     if (!isKnownWebhookTopic(topic)) {
@@ -177,19 +176,17 @@ async function handleAppUninstalled(
     backoff: { type: 'exponential', delay: 5000 },
   });
 
-  await getWebhookQueue().add(
-    'shopify-webhook',
+  await enqueueWebhookJob(
     {
       topic: 'app/uninstalled',
       shopDomain,
       webhookId,
       payload: request.body,
       receivedAt: new Date().toISOString(),
-    } satisfies ShopifyWebhookJob,
+    },
     {
-      jobId: webhookId,
-      removeOnComplete: 1000,
-      removeOnFail: 5000,
+      hmac: getHeaderValue(request.headers['x-shopify-hmac-sha256']),
+      rawBody: (request as ShopifyWebhookRequest).rawBody?.toString('utf8'),
     },
   );
 

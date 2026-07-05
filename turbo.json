@@ -10,7 +10,8 @@
     "SHOPIFY_API_SECRET",
     "SHOPIFY_APP_URL",
     "AI_SERVICE_URL",
-    "API_URL"
+    "API_URL",
+    "MONITORING_WEBHOOK_URL"
   ],
   "tasks": {
     "build": {

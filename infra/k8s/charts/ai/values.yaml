@@ -1,0 +1,41 @@
+replicaCount: 2
+
+image:
+  repository: ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/retain-ai
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ai.retain.app
+  tlsSecretName: retain-ai-tls
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+pdb:
+  minAvailable: 1
+
+env:
+  ENVIRONMENT: production
+  ENABLE_SCHEDULER: "true"
+
+secretRefs:
+  - retain-ai-secrets

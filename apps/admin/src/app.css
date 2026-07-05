@@ -1,0 +1,4 @@
+/* App Bridge reads links from ui-nav-menu and renders them in the Shopify admin sidebar. */
+ui-nav-menu {
+  display: none;
+}

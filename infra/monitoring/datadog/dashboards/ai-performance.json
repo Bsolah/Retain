@@ -1,0 +1,31 @@
+{
+  "title": "Retain — AI Model Performance",
+  "description": "Inference latency, throughput, and error rate",
+  "widgets": [
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Churn prediction latency (p95)",
+        "requests": [
+          {
+            "q": "p95:trace.fastapi.request{service:retain-ai,resource_name:post_/predict/churn,env:$env}",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Predictions per minute",
+        "requests": [
+          {
+            "q": "sum:retain.ai.predictions{env:$env}.as_rate()*60",
+            "display_type": "bars"
+          }
+        ]
+      }
+    }
+  ],
+  "template_variables": [{ "name": "env", "default": "production" }]
+}

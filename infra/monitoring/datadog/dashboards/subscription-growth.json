@@ -1,0 +1,35 @@
+{
+  "title": "Retain — Subscription Growth",
+  "description": "Active subscriptions and churn events",
+  "widgets": [
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Active subscriptions",
+        "requests": [
+          {
+            "q": "max:retain.subscriptions.active{env:$env}",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "New vs cancelled (daily)",
+        "requests": [
+          {
+            "q": "sum:retain.subscriptions.created{env:$env}.rollup(sum, 86400)",
+            "display_type": "bars"
+          },
+          {
+            "q": "sum:retain.subscriptions.cancelled{env:$env}.rollup(sum, 86400)",
+            "display_type": "bars"
+          }
+        ]
+      }
+    }
+  ],
+  "template_variables": [{ "name": "env", "default": "production" }]
+}

@@ -19,9 +19,11 @@ apps/ai/**/__pycache__
 apps/ai/.venv
 apps/ai/__pycache__
 apps/ai/**/__pycache__
+apps/ai/models
 *.pyc
 .pytest_cache
 .mypy_cache
+*.joblib
 
 # IDE / OS
 .DS_Store
@@ -35,6 +37,7 @@ apps/ai/**/__pycache__
 logs
 *.log
 coverage
+.coverage
 .nyc_output
 
 # Prisma
@@ -44,3 +47,4 @@ packages/database/prisma/*.db-journal
 # Misc
 *.pem
 .cache
+.shopify

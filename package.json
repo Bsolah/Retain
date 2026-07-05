@@ -11,14 +11,18 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter @retain/api test:integration",
+    "test:e2e": "pnpm --filter @retain/e2e test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "db:generate": "pnpm --filter @retain/database generate",
     "postinstall": "pnpm db:generate",
     "db:migrate": "pnpm --filter @retain/database migrate:dev",
     "db:migrate:deploy": "pnpm --filter @retain/database migrate:deploy",
     "db:push": "pnpm --filter @retain/database push",
     "db:seed": "pnpm --filter @retain/database seed",
+    "shopify:deploy": "shopify app deploy --allow-updates",
     "prepare": "husky"
   },
   "devDependencies": {

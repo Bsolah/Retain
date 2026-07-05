@@ -108,11 +108,20 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         }
 
         if (!verifyShopifyQueryHmac(request.query)) {
-          return reply.status(401).send({
-            message: 'Invalid HMAC',
-            code: 'UNAUTHORIZED',
-            extensions: {},
-          });
+          request.log.warn(
+            { shop: shopDomain },
+            'OAuth callback rejected: invalid HMAC (check SHOPIFY_API_SECRET matches Partner Dashboard)',
+          );
+          return reply
+            .status(401)
+            .type('text/html')
+            .send(
+              oauthErrorReply({
+                title: 'OAuth failed: invalid HMAC',
+                detail:
+                  'SHOPIFY_API_SECRET in apps/api/.env does not match the Client secret in Partner Dashboard.',
+              }),
+            );
         }
 
         const redis = getRedis();
@@ -120,11 +129,20 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         await redis.del(oauthStateKey(state));
 
         if (!expectedShop || expectedShop !== shopDomain) {
-          return reply.status(401).send({
-            message: 'Invalid OAuth state',
-            code: 'UNAUTHORIZED',
-            extensions: {},
-          });
+          request.log.warn(
+            { shop: shopDomain, hasState: Boolean(expectedShop) },
+            'OAuth callback rejected: invalid or expired state (restart install from /auth/shopify)',
+          );
+          return reply
+            .status(401)
+            .type('text/html')
+            .send(
+              oauthErrorReply({
+                title: 'OAuth failed: invalid or expired state',
+                detail:
+                  'The install session expired or Redis lost the state. Open the install URL again and complete approval within 10 minutes.',
+              }),
+            );
         }
 
         const tokenResponse = await exchangeAuthorizationCode({
@@ -178,21 +196,35 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           );
         }
 
-        const sessionToken = await generateSessionToken(request, shop);
+        request.log.info(
+          {
+            shop: shopDomain,
+            scopes: tokenResponse.scope.split(','),
+            shopId: shop.id,
+          },
+          'OAuth completed — access token stored',
+        );
+
+        // Return to Shopify Admin so the app reloads inside the embedded iframe.
+        // Session JWT is issued in-iframe via POST /auth/session-token.
         const redirectUrl = buildEmbeddedAppRedirect({
           shopDomain,
           host: request.query.host,
-          sessionToken,
         });
 
         return reply.redirect(redirectUrl);
       } catch (error) {
         request.log.error({ err: error }, 'OAuth callback failed');
-        return reply.status(500).send({
-          message: 'OAuth callback failed',
-          code: 'INTERNAL_SERVER_ERROR',
-          extensions: {},
-        });
+        const detail = error instanceof Error ? error.message : 'Unknown error';
+        return reply
+          .status(500)
+          .type('text/html')
+          .send(
+            oauthErrorReply({
+              title: 'OAuth callback failed',
+              detail: `${detail}. Check API logs. Common causes: wrong API key/secret, or redirect URL in Partner Dashboard does not match SHOPIFY_APP_URL/auth/callback.`,
+            }),
+          );
       }
     },
   );
@@ -264,25 +296,36 @@ function oauthStateKey(state: string): string {
 }
 
 function oauthCallbackUrl(): string {
+  // Must match Partner Dashboard "Allowed redirection URL(s)" exactly.
   return `${env.SHOPIFY_APP_URL.replace(/\/$/, '')}/auth/callback`;
 }
 
 function buildEmbeddedAppRedirect(options: {
   shopDomain: string;
   host?: string;
-  sessionToken: string;
 }): string {
   const storeHandle = options.shopDomain.replace(/\.myshopify\.com$/, '');
-  const embeddedAdminUrl = `https://admin.shopify.com/store/${storeHandle}/apps/${env.SHOPIFY_API_KEY}`;
+  // Always return to Shopify Admin embedded app URL (keeps UI inside the iframe).
   const target = new URL(
-    env.ADMIN_APP_URL.length > 0 ? env.ADMIN_APP_URL : embeddedAdminUrl,
+    `https://admin.shopify.com/store/${storeHandle}/apps/${env.SHOPIFY_API_KEY}`,
   );
 
   target.searchParams.set('shop', options.shopDomain);
-  target.searchParams.set('session', options.sessionToken);
   if (options.host) {
     target.searchParams.set('host', options.host);
   }
 
   return target.toString();
+}
+
+function oauthErrorReply(options: { title: string; detail: string }): string {
+  const callback = oauthCallbackUrl();
+  const body = `
+    <h1>${options.title}</h1>
+    <p>${options.detail}</p>
+    <p>Expected callback URL in Partner Dashboard:</p>
+    <pre>${callback}</pre>
+    <p>Current SHOPIFY_APP_URL: <code>${env.SHOPIFY_APP_URL}</code></p>
+  `;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${options.title}</title></head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;line-height:1.5">${body}</body></html>`;
 }

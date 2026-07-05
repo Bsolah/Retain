@@ -134,6 +134,106 @@ packages/
   database/         # Prisma
 ```
 
+## Subscription contracts & billing
+
+- Webhook processor (BullMQ `shopify-webhooks`) upserts `subscription_contracts/create|update`
+- Auto-creates `Customer` when missing; links plan via selling plan group
+- Daily billing cron at **06:00 UTC** (`billing-scheduler.ts`) creates Shopify billing attempts
+- Idempotent via `lastBillingAttemptId` + daily idempotency key
+- Payment failures set `payment_failed` and enqueue dunning interventions
+- Merchant mutations: `updateContract`, `cancelContract`, `pauseContract`, `resumeContract`, `runNow`
+- Customer portal mutations: pause, skip (max 2 consecutive), swap, box update, cancel with survey
+- All mutations write to `events`
+
+## AI feature engineering & churn model
+
+The AI service (`apps/ai`, port **8000**) builds churn-prediction feature vectors and trains an XGBoost model.
+
+- `src/features/engineer.py` — `FeatureEngineer.generate_features` / `generate_batch_features`
+- `src/jobs/daily_features.py` — daily batch (APScheduler **02:00 UTC**) upserts `subscriber_signals`
+- `src/models/churn.py` — `ChurnPredictor` (XGBoost, baseline fallback when under 1000 samples)
+- `src/jobs/train_model.py` — extract labels, engineer features, validate, register, deploy
+- Endpoints:
+  - Features: `POST /features/generate`, `GET /features/{contract_id}`, `GET /features/health`
+  - Models: `POST /models/train`, `GET /models/{version}/metrics`, `POST /models/{version}/deploy`
+  - Predictions: `GET /predictions/{contract_id}`, `POST /predictions/batch`
+  - Interventions: `POST /interventions/evaluate`, `POST /interventions/evaluate-batch`,
+    `GET /interventions/{id}/status`, `POST /interventions/{id}/accept|decline`
+
+Auto-interventions respect `shop.settings.auto_interventions_enabled` (default true),
+skip when a pending intervention exists, and rate-limit to 3 per contract per 30 days.
+Email/SMS use SendGrid/Twilio when configured; otherwise delivery is dry-run.
+
+Artifacts default to `models/churn/{version}.joblib` (`MODELS_URI_PREFIX`). Set `MODELS_URI_PREFIX=s3://models/churn` for S3. Apply Prisma migrations for `feature_vector` and `model_registry`.
+
+## Customer portal
+
+The portal (`apps/portal`, port **5174**) authenticates via **Customer Account API OAuth 2.0 + PKCE**. The API BFF owns tokens in httpOnly cookies and proxies Customer Account GraphQL plus local contract mutations.
+
+**Multi-tenant:** each customer arrives with their store in the URL — no per-merchant env vars.
+
+```bash
+PORTAL_URL=http://localhost:5174
+CUSTOMER_ACCOUNT_CLIENT_ID=   # One app-wide Client ID from Partner Dashboard
+```
+
+Optional for local dev only (when not using `?shop=`):
+
+```bash
+CUSTOMER_ACCOUNT_SHOP_DOMAIN=your-store.myshopify.com
+```
+
+In Partner Dashboard (Customer Account API / Headless channel), set the redirect URI to:
+
+`{SHOPIFY_APP_URL}/portal/auth/callback`
+
+Portal `VITE_API_URL` must be the **same public API origin** that handles OAuth (so cookies are sent). With tunnels, use the API tunnel URL, not `localhost`.
+
+Customer login URL (link from storefront / emails):
+
+`{PORTAL_URL}/login?shop=your-store.myshopify.com`
+
+On `/portal/auth/start`, the API validates that the shop has installed Retain before redirecting to Shopify customer login.
+
+Routes:
+
+| Path                         | Purpose                                                |
+| ---------------------------- | ------------------------------------------------------ |
+| `/portal`                    | Dashboard — subscriptions, health, pause / skip / swap |
+| `/portal/:contractId`        | Detail — orders, payment, box builder, add-ons         |
+| `/portal/manage`             | Frequency, address, notifications, pause defaults      |
+| `/portal/:contractId/cancel` | 3-step cancel with retention offers                    |
+
+## Subscription plans
+
+- GraphQL: `plans`, `plan`, `createPlan`, `updatePlan`, `archivePlan`, plus `searchProducts` / `collections`
+- Admin UI: `/plans` list and `/plans/new` 3-step wizard (Polaris + App Bridge, React Query + Zustand)
+- Create syncs to Shopify `sellingPlanGroupCreate` and stores `shopifySellingPlanGroupId`
+- Archive removes the selling plan group from Shopify (hides subscribe option on products); unarchive recreates it
+- Delete permanently removes the plan and its Shopify selling plan group (only when no subscribers)
+
+## Storefront subscribe widget (theme app extension)
+
+Retain ships a **theme app extension** so merchants can show purchase options on product pages without editing theme code.
+
+| Piece             | Location                                                            |
+| ----------------- | ------------------------------------------------------------------- |
+| Theme block       | `extensions/retain-purchase-options/blocks/purchase-options.liquid` |
+| Partner config    | `shopify.app.toml`                                                  |
+| Widget status API | GraphQL `storefrontWidget`                                          |
+| Admin onboarding  | Banner on Dashboard/Plans + modal after creating a plan             |
+
+### Deploy the extension (once per app version)
+
+```bash
+shopify auth login
+pnpm shopify:deploy
+```
+
+After deploy, merchants enable the block from Retain admin (**Open theme editor**), place **Retain: Subscribe** above Buy buttons, and click **Save**.
+
+`read_themes` scope is required for Retain to detect whether the widget is active. Existing installs must **re-authorize** after you add the scope.
+
 ## Shopify OAuth (local + ngrok)
 
 ```bash

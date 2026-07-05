@@ -55,11 +55,9 @@ export async function shopifyAdminGraphql<T>(
   const payload = (await response.json()) as ShopifyGraphqlResponse<T>;
 
   if (payload.errors?.length) {
-    throw new ShopifyClientError(
-      payload.errors.map((error) => error.message).join('; '),
-      response.status,
-      payload.errors,
-    );
+    const message = payload.errors.map((error) => error.message).join('; ');
+    // Surface access-denied clearly (missing Subscription API approval / scopes).
+    throw new ShopifyClientError(message, response.status, payload.errors);
   }
 
   if (!payload.data) {

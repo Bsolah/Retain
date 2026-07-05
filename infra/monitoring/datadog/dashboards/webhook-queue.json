@@ -1,0 +1,31 @@
+{
+  "title": "Retain — Webhook Queue Depth",
+  "description": "BullMQ queue depth and DLQ monitoring",
+  "widgets": [
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Webhook queue waiting jobs",
+        "requests": [
+          {
+            "q": "avg:retain.webhooks.queue.depth{queue:shopify-webhooks,env:$env}",
+            "display_type": "line"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "query_value",
+        "title": "DLQ depth",
+        "requests": [
+          {
+            "q": "max:retain.webhooks.dlq.depth{env:$env}"
+          }
+        ],
+        "autoscale": true
+      }
+    }
+  ],
+  "template_variables": [{ "name": "env", "default": "production" }]
+}

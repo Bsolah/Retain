@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "retain-worker.fullname" . }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: retain-webhook-worker
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: retain-api
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: retain-ai
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: retain-api
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 3001

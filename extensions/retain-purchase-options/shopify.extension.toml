@@ -1,0 +1,7 @@
+api_version = "2025-01"
+
+[[extensions]]
+uid = "retain-purchase-options-theme"
+type = "theme"
+name = "Retain purchase options"
+handle = "retain-purchase-options"

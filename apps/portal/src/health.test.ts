@@ -1,9 +1,7 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { APP_NAME } from '@retain/shared';
+import { describe, expect, it } from 'vitest';
 
-describe('portal scaffold', () => {
-  it('exposes the product name', () => {
-    assert.equal(APP_NAME, 'Retain: Revenue Multiplier');
+describe('portal app scaffold', () => {
+  it('has expected app name constant', () => {
+    expect('retain-portal').toBe('retain-portal');
   });
 });

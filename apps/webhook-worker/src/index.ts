@@ -1,65 +1,53 @@
-import { Queue, Worker } from 'bullmq';
 import Fastify from 'fastify';
 import { createHealthResponse } from '@retain/shared';
+import { env } from './env.js';
+import { registry } from './lib/metrics.js';
+import { disconnectRedis, getRedis } from './lib/redis.js';
+import {
+  refreshQueueMetrics,
+  shutdownWorkers,
+  startWorkers,
+} from './workers/start.js';
 
-const PORT = Number(process.env.PORT ?? 3002);
-const HOST = process.env.HOST ?? '0.0.0.0';
-
-function getRedisConnection() {
-  const url = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
-
-  return {
-    host: url.hostname,
-    port: Number(url.port || 6379),
-    username: url.username || undefined,
-    password: url.password || undefined,
-    maxRetriesPerRequest: null as null,
-  };
-}
-
-const connection = getRedisConnection();
-const webhookQueue = new Queue('webhooks', { connection });
-
-const worker = new Worker(
-  'webhooks',
-  async (job) => {
-    // Scaffold only — webhook handlers will be implemented later.
-    return { received: job.name, id: job.id };
-  },
-  { connection },
-);
-
-worker.on('failed', (job, error) => {
-  console.error(`Job ${job?.id ?? 'unknown'} failed:`, error.message);
-});
-
-const app = Fastify({
-  logger: true,
-});
+const app = Fastify({ logger: true });
 
 app.get('/health', async (_request, reply) => {
-  return reply.status(200).send(createHealthResponse('webhook-worker'));
+  try {
+    await getRedis().ping();
+    return reply.status(200).send(createHealthResponse('webhook-worker'));
+  } catch {
+    return reply.status(503).send({ status: 'degraded' });
+  }
 });
 
+app.get('/metrics', async (_request, reply) => {
+  await refreshQueueMetrics();
+  reply.header('content-type', registry.contentType);
+  return reply.send(await registry.metrics());
+});
+
+startWorkers();
+
+setInterval(() => {
+  void refreshQueueMetrics().catch((error) => {
+    console.error('Failed to refresh queue metrics', error);
+  });
+}, 15_000);
+
 try {
-  await app.listen({ port: PORT, host: HOST });
-  console.log(`Webhook worker listening on ${HOST}:${PORT}`);
-  console.log(`Queue ready: ${webhookQueue.name}`);
+  await app.listen({ port: env.PORT, host: env.HOST });
+  console.log(`Webhook worker listening on ${env.HOST}:${env.PORT}`);
 } catch (error) {
   console.error(error);
   process.exit(1);
 }
 
 async function shutdown() {
-  await worker.close();
-  await webhookQueue.close();
+  await shutdownWorkers();
+  await disconnectRedis();
   await app.close();
   process.exit(0);
 }
 
-process.on('SIGINT', () => {
-  void shutdown();
-});
-process.on('SIGTERM', () => {
-  void shutdown();
-});
+process.on('SIGINT', () => void shutdown());
+process.on('SIGTERM', () => void shutdown());
