@@ -5,9 +5,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from src.models.churn import ChurnPredictor
 from src.models import predictor_service
+from src.models.churn import ChurnPredictor
 
 
 @pytest.mark.asyncio
@@ -15,8 +14,14 @@ async def test_load_predictor_returns_baseline_when_no_model() -> None:
     mock_pool = MagicMock()
 
     with (
-        patch("src.models.predictor_service.get_pool", AsyncMock(return_value=mock_pool)),
-        patch("src.models.predictor_service.get_active_model", AsyncMock(return_value=None)),
+        patch(
+            "src.models.predictor_service.get_pool",
+            AsyncMock(return_value=mock_pool),
+        ),
+        patch(
+            "src.models.predictor_service.get_active_model",
+            AsyncMock(return_value=None),
+        ),
     ):
         predictor = await predictor_service.load_predictor()
 
@@ -38,13 +43,24 @@ async def test_predict_contract_returns_prediction() -> None:
     mock_engineer.generate_features = AsyncMock(return_value=features)
 
     mock_predictor = ChurnPredictor()
-    prediction = mock_predictor.predict(features)
 
     with (
-        patch("src.models.predictor_service.get_pool", AsyncMock(return_value=mock_pool)),
-        patch("src.models.predictor_service.FeatureEngineer", return_value=mock_engineer),
-        patch("src.models.predictor_service.load_predictor", AsyncMock(return_value=mock_predictor)),
-        patch("src.models.predictor_service._persist_prediction", AsyncMock()),
+        patch(
+            "src.models.predictor_service.get_pool",
+            AsyncMock(return_value=mock_pool),
+        ),
+        patch(
+            "src.models.predictor_service.FeatureEngineer",
+            return_value=mock_engineer,
+        ),
+        patch(
+            "src.models.predictor_service.load_predictor",
+            AsyncMock(return_value=mock_predictor),
+        ),
+        patch(
+            "src.models.predictor_service._persist_prediction",
+            AsyncMock(),
+        ),
     ):
         result = await predictor_service.predict_contract("contract-1")
 

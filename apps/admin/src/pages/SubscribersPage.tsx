@@ -14,7 +14,7 @@ import {
   TextField,
 } from '@shopify/polaris';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import { SubscriberDrawer } from '../components/analytics/SubscriberDrawer';
 import { useBulkSubscriberAction, useSubscribers } from '../hooks/useAnalytics';
 import { usePlans } from '../hooks/usePlans';
@@ -28,6 +28,32 @@ const FREQUENCY_OPTIONS = [
   { label: 'Every 1 month', value: 'Every 1 month' },
   { label: 'Every 2 month', value: 'Every 2 month' },
 ];
+
+const TABLE_GRID_COLUMNS =
+  '32px minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 0.75fr) minmax(0, 0.6fr) minmax(0, 0.7fr) minmax(0, 0.45fr) 48px';
+
+const cellEllipsis: CSSProperties = {
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+function formatShortDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatSubscriberName(row: SubscriberRow): string {
+  return (
+    `${row.customer.firstName ?? ''} ${row.customer.lastName ?? ''}`.trim() ||
+    '—'
+  );
+}
 
 export function SubscribersPage() {
   const [search, setSearch] = useState('');
@@ -111,9 +137,9 @@ export function SubscribersPage() {
 
   return (
     <Page title="Subscribers">
-      <InlineStack align="start" gap="400" blockAlign="start" wrap={false}>
-        <div style={{ width: 280, flexShrink: 0 }}>
-          <Card>
+      <InlineStack align="start" gap="300" blockAlign="start" wrap={false}>
+        <div style={{ width: 200, flexShrink: 0 }}>
+          <Card padding="300">
             <BlockStack gap="300">
               <Text as="h3" variant="headingSm">
                 Filters
@@ -249,13 +275,12 @@ export function SubscribersPage() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns:
-                    '40px 1.1fr 1.3fr 1fr 0.7fr 0.7fr 0.7fr 0.8fr 0.7fr 80px',
-                  gap: 8,
-                  padding: '10px 12px',
+                  gridTemplateColumns: TABLE_GRID_COLUMNS,
+                  gap: 6,
+                  padding: '8px 10px',
                   borderBottom: '1px solid #e2e8f0',
                   fontWeight: 600,
-                  fontSize: 12,
+                  fontSize: 11,
                 }}
               >
                 <Checkbox
@@ -264,19 +289,21 @@ export function SubscribersPage() {
                   checked={allSelected}
                   onChange={toggleAll}
                 />
-                <span>Name</span>
-                <span>Email</span>
+                <span>Subscriber</span>
                 <span>Plan</span>
                 <span>Status</span>
                 <span>Risk</span>
-                <span>Health</span>
-                <span>Next charge</span>
+                <span>Next</span>
                 <span>LTV</span>
-                <span>Actions</span>
+                <span />
               </div>
               <div
                 ref={parentRef}
-                style={{ height: 520, overflow: 'auto', position: 'relative' }}
+                style={{
+                  height: 520,
+                  overflow: 'auto',
+                  position: 'relative',
+                }}
                 onScroll={(event) => {
                   const target = event.currentTarget;
                   const nearBottom =
@@ -307,13 +334,12 @@ export function SubscribersPage() {
                           height: virtualRow.size,
                           transform: `translateY(${virtualRow.start}px)`,
                           display: 'grid',
-                          gridTemplateColumns:
-                            '40px 1.1fr 1.3fr 1fr 0.7fr 0.7fr 0.7fr 0.8fr 0.7fr 80px',
-                          gap: 8,
+                          gridTemplateColumns: TABLE_GRID_COLUMNS,
+                          gap: 6,
                           alignItems: 'center',
-                          padding: '0 12px',
+                          padding: '0 10px',
                           borderBottom: '1px solid #f1f5f9',
-                          fontSize: 13,
+                          fontSize: 12,
                           background: selected.includes(row.id)
                             ? '#eef2ff'
                             : '#fff',
@@ -327,27 +353,39 @@ export function SubscribersPage() {
                             onChange={() => toggleOne(row.id)}
                           />
                         </span>
-                        <span>
-                          {row.customer.firstName} {row.customer.lastName}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ ...cellEllipsis, fontWeight: 500 }}>
+                            {formatSubscriberName(row)}
+                          </div>
+                          <div
+                            style={{
+                              ...cellEllipsis,
+                              fontSize: 11,
+                              color: '#64748b',
+                            }}
+                          >
+                            {row.customer.email}
+                          </div>
+                        </div>
+                        <span style={cellEllipsis} title={row.plan.name}>
+                          {row.plan.name}
                         </span>
-                        <span>{row.customer.email}</span>
-                        <span>{row.plan.name}</span>
                         <span>
-                          <Badge>{row.status}</Badge>
+                          <Badge size="small">
+                            {formatStatusLabel(row.status)}
+                          </Badge>
                         </span>
                         <span>
                           <RiskBadge score={row.riskScore} />
                         </span>
-                        <span>{row.healthStatus}</span>
-                        <span>
-                          {row.nextBillingDate
-                            ? new Date(row.nextBillingDate).toLocaleDateString()
-                            : '—'}
+                        <span style={cellEllipsis}>
+                          {formatShortDate(row.nextBillingDate)}
                         </span>
                         <span>${row.customer.lifetimeValue.toFixed(0)}</span>
                         <span>
                           <Button
                             size="slim"
+                            variant="plain"
                             onClick={() => setActiveId(row.id)}
                           >
                             View
@@ -382,10 +420,29 @@ export function SubscribersPage() {
   );
 }
 
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case 'payment_failed':
+      return 'Failed';
+    case 'active':
+      return 'Active';
+    case 'paused':
+      return 'Paused';
+    case 'cancelled':
+      return 'Cancelled';
+    case 'expired':
+      return 'Expired';
+    default:
+      return status;
+  }
+}
+
 function RiskBadge({ score }: { score: number }) {
   const tone =
     score >= 0.7 ? 'critical' : score >= 0.4 ? 'attention' : 'success';
-  return <Badge tone={tone}>{`${(score * 100).toFixed(0)}%`}</Badge>;
+  return (
+    <Badge size="small" tone={tone}>{`${(score * 100).toFixed(0)}%`}</Badge>
+  );
 }
 
 function subscriberToCsvRow(row: SubscriberRow): Record<string, unknown> {

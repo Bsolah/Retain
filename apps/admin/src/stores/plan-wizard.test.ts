@@ -18,11 +18,9 @@ describe('usePlanWizardStore', () => {
     store.nextStep();
     expect(usePlanWizardStore.getState().step).toBe(1);
     store.nextStep();
-    expect(usePlanWizardStore.getState().step).toBe(2);
-    store.nextStep();
-    expect(usePlanWizardStore.getState().step).toBe(2);
-    store.prevStep();
     expect(usePlanWizardStore.getState().step).toBe(1);
+    store.prevStep();
+    expect(usePlanWizardStore.getState().step).toBe(0);
   });
 
   it('validates basic info and builds GraphQL input', () => {
@@ -30,10 +28,6 @@ describe('usePlanWizardStore', () => {
       name: 'Monthly Coffee',
       description: 'Fresh beans every month',
       planType: 'standard',
-      pricingStrategy: 'percentage_discount',
-      discountValue: 15,
-      trialPeriodDays: 7,
-      minimumCommitment: 3,
     });
 
     usePlanWizardStore.getState().addFrequency();
@@ -46,7 +40,6 @@ describe('usePlanWizardStore', () => {
     expect(input.name).toBe('Monthly Coffee');
     expect(input.frequencies).toHaveLength(2);
     expect(input.productIds).toContain('gid://shopify/Product/1');
-    expect(input.trialPeriodDays).toBe(7);
   });
 
   it('removes products and collections on toggle', () => {
@@ -75,10 +68,6 @@ describe('usePlanWizardStore', () => {
       name: 'Quarterly Prepaid',
       description: 'Pay upfront',
       planType: 'prepaid',
-      pricingStrategy: 'percentage_discount',
-      discountValue: 10,
-      trialPeriodDays: 0,
-      minimumCommitment: null,
     });
     usePlanWizardStore.getState().updateFrequency(0, {
       interval: 1,
@@ -96,10 +85,6 @@ describe('usePlanWizardStore', () => {
       name: 'Snack Box',
       description: 'Curated snacks',
       planType: 'box',
-      pricingStrategy: 'percentage_discount',
-      discountValue: 5,
-      trialPeriodDays: 0,
-      minimumCommitment: null,
     });
     usePlanWizardStore.getState().toggleProduct('gid://shopify/Product/1', 'A');
     usePlanWizardStore.getState().toggleProduct('gid://shopify/Product/2', 'B');
@@ -115,10 +100,6 @@ describe('usePlanWizardStore', () => {
       name: 'Weekly Box',
       description: 'Every week',
       planType: 'box',
-      pricingStrategy: 'tiered',
-      discountValue: 5,
-      trialPeriodDays: 14,
-      minimumCommitment: 2,
       frequencies: [{ interval: 1, unit: 'week', discountPercent: 5 }],
       boxConfig: {
         minItems: 2,

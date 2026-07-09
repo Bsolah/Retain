@@ -22,10 +22,6 @@ const PLAN_FIELDS = `
     discountPercent
     prepaidBillingInterval
   }
-  minimumCommitment
-  trialPeriodDays
-  pricingStrategy
-  discountValue
   boxConfig {
     minItems
     maxItems
@@ -142,6 +138,8 @@ export function usePlans(status?: PlanStatus) {
   return useQuery({
     queryKey: ['plans', shopId, status ?? 'all'],
     enabled: Boolean(shopId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const data = await graphqlRequest<{ plans: SubscriptionPlan[] }>(
         PLANS_QUERY,
@@ -180,10 +178,6 @@ export function useCreatePlan() {
         status: 'active',
         planType: input.planType,
         frequencies: input.frequencies,
-        minimumCommitment: input.minimumCommitment,
-        trialPeriodDays: input.trialPeriodDays ?? 0,
-        pricingStrategy: input.pricingStrategy,
-        discountValue: input.discountValue,
         productIds: input.productIds ?? [],
         collectionIds: input.collectionIds ?? [],
         subscriberCount: 0,

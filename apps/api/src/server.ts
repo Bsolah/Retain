@@ -18,6 +18,7 @@ import { registerPortalAuthRoutes } from './routes/portal-auth.js';
 import { registerMigrationRoutes } from './routes/migrations.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerSendGridWebhookRoutes } from './routes/sendgrid-webhooks.js';
+import { registerSupportRoutes } from './routes/support.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
 import { mercuriusConfig, registerQueryComplexityHook } from './schema.js';
 import {
@@ -146,13 +147,17 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerDunningRoutes(app);
   await registerMigrationRoutes(app);
   await registerNotificationRoutes(app);
+  await registerSupportRoutes(app);
   await registerSendGridWebhookRoutes(app);
   await registerWebhookRoutes(app);
 
   await app.register(mercurius, mercuriusConfig);
   await registerQueryComplexityHook(app);
 
-  if (env.PROCESS_WEBHOOKS_IN_API && !env.SKIP_BACKGROUND_WORKERS) {
+  if (
+    (env.PROCESS_WEBHOOKS_IN_API || env.NODE_ENV === 'development') &&
+    !env.SKIP_BACKGROUND_WORKERS
+  ) {
     startWebhookProcessor();
   }
   if (!env.SKIP_BACKGROUND_WORKERS) {

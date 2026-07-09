@@ -18,10 +18,7 @@ type StorefrontWidgetBannerProps = {
   prominent?: boolean;
 };
 
-function activeTitle(source?: StorefrontWidgetSource | null): string {
-  if (source === 'theme_native') {
-    return 'Your theme already shows subscription options';
-  }
+function activeTitle(): string {
   return 'Storefront subscribe button is active';
 }
 
@@ -32,10 +29,10 @@ function activeMessage(
   const themeSuffix = themeName ? ` (${themeName})` : '';
 
   if (source === 'theme_native') {
-    return `Customers can subscribe using your theme's built-in purchase options${themeSuffix}. You do not need to add Retain's theme block.`;
+    return `Your theme has built-in purchase options${themeSuffix}. For Retain's simple layout (radio, plan name, frequency, price), add the Retain: Subscribe block and hide the theme's native picker.`;
   }
 
-  return `Customers can choose subscription options on product pages${themeSuffix}.`;
+  return `Customers see Retain's simple purchase options on product pages${themeSuffix}: radio, plan name, delivery frequency, and price.`;
 }
 
 export function StorefrontWidgetBanner({
@@ -72,7 +69,7 @@ export function StorefrontWidgetBanner({
 
   if (data.status === 'active') {
     return (
-      <Banner tone="success" title={activeTitle(data.source)}>
+      <Banner tone="success" title={activeTitle()}>
         <p>{activeMessage(data.themeName, data.source)}</p>
       </Banner>
     );

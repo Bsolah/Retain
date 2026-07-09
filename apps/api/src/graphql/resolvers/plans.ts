@@ -1,6 +1,7 @@
 import { PlanStatus, Prisma } from '@retain/database';
 import type { GraphQLContext } from '../../context.js';
 import { notFoundError, userInputError } from '../../lib/graphql-errors.js';
+import type { Shop } from '@retain/database';
 import { listCollections, searchProducts } from '../../services/catalog.js';
 import {
   validateBoxConfig,
@@ -10,9 +11,11 @@ import {
 import {
   createSellingPlanGroup,
   hideSellingPlanGroupFromProducts,
+  resyncSellingPlanGroup,
   sellingPlanInputFromRecord,
   updateSellingPlanGroup,
 } from '../../services/selling-plans.js';
+import { syncRetainActiveSellingPlanGroupsMetafield } from '../../services/storefront-metafields.js';
 import { assertShopAccess, requireShop } from '../auth.js';
 import { mapPlanToGql } from '../plan-mapper.js';
 
@@ -26,10 +29,6 @@ type PlanInput = {
     discountPercent?: number | null;
     prepaidBillingInterval?: number | null;
   }>;
-  minimumCommitment?: number | null;
-  trialPeriodDays?: number | null;
-  pricingStrategy: string;
-  discountValue?: number | null;
   boxConfig?: {
     minItems?: number | null;
     maxItems?: number | null;
@@ -47,9 +46,23 @@ type PlanInput = {
 
 const planInclude = {
   contracts: {
-    select: { status: true, totalRevenue: true },
+    select: { status: true, totalRevenue: true, lineItems: true },
   },
 } as const;
+
+async function refreshStorefrontPlanFilter(
+  context: GraphQLContext,
+  shop: Shop,
+): Promise<void> {
+  try {
+    await syncRetainActiveSellingPlanGroupsMetafield(shop);
+  } catch (error) {
+    context.request.log.warn(
+      { err: error, shopId: shop.id },
+      'Failed to sync storefront active plan metafield',
+    );
+  }
+}
 
 export const planQueries = {
   plans: async (
@@ -60,6 +73,7 @@ export const planQueries = {
     },
     context: GraphQLContext,
   ) => {
+    const shop = requireShop(context);
     assertShopAccess(context, args.shopId);
 
     const plans = await context.prisma.subscriptionPlan.findMany({
@@ -70,6 +84,8 @@ export const planQueries = {
       include: planInclude,
       orderBy: { createdAt: 'desc' },
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return plans.map(mapPlanToGql);
   },
@@ -140,8 +156,6 @@ export const planMutations = {
       frequencies,
       productIds,
       collectionIds,
-      pricingStrategy: input.pricingStrategy,
-      discountValue: input.discountValue,
     };
 
     let shopifySellingPlanGroupId: string;
@@ -167,20 +181,14 @@ export const planMutations = {
         status: PlanStatus.active,
         planType,
         frequencies,
-        minimumCommitment: input.minimumCommitment ?? null,
-        trialPeriodDays: input.trialPeriodDays ?? 0,
-        pricingStrategy: input.pricingStrategy as
-          'percentage_discount' | 'fixed_price' | 'tiered',
-        discountValue:
-          input.discountValue == null
-            ? null
-            : new Prisma.Decimal(input.discountValue),
         boxConfig: boxConfig ?? Prisma.JsonNull,
         productIds,
         collectionIds,
       },
       include: planInclude,
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return mapPlanToGql(plan);
   },
@@ -216,18 +224,52 @@ export const planMutations = {
       collectionIds,
     );
 
-    if (existing.shopifySellingPlanGroupId) {
+    if (productIds.length === 0 && collectionIds.length === 0) {
+      throw userInputError(
+        'Select at least one product or collection for the plan',
+      );
+    }
+
+    const sellingInput = {
+      name,
+      description: input.description,
+      planType,
+      frequencies,
+      productIds,
+      collectionIds,
+    };
+
+    const previousSellingInput = sellingPlanInputFromRecord(
+      existing,
+      validateFrequencies(
+        existing.frequencies as PlanInput['frequencies'],
+        existing.planType as 'standard' | 'prepaid' | 'box',
+      ),
+    );
+
+    let shopifySellingPlanGroupId = existing.shopifySellingPlanGroupId;
+
+    if (shopifySellingPlanGroupId) {
       try {
-        await updateSellingPlanGroup(shop, existing.shopifySellingPlanGroupId, {
-          name,
-          description: input.description,
-          planType,
-          frequencies,
-          productIds,
-          collectionIds,
-          pricingStrategy: input.pricingStrategy,
-          discountValue: input.discountValue,
-        });
+        await updateSellingPlanGroup(
+          shop,
+          shopifySellingPlanGroupId,
+          sellingInput,
+          { previous: previousSellingInput },
+        );
+      } catch (error) {
+        throw userInputError(
+          error instanceof Error
+            ? `Shopify sync failed: ${error.message}`
+            : 'Shopify sync failed',
+        );
+      }
+    } else {
+      try {
+        shopifySellingPlanGroupId = await createSellingPlanGroup(
+          shop,
+          sellingInput,
+        );
       } catch (error) {
         throw userInputError(
           error instanceof Error
@@ -240,24 +282,19 @@ export const planMutations = {
     const plan = await context.prisma.subscriptionPlan.update({
       where: { id: existing.id },
       data: {
+        shopifySellingPlanGroupId,
         name,
         description: input.description ?? null,
         planType,
         frequencies,
-        minimumCommitment: input.minimumCommitment ?? null,
-        trialPeriodDays: input.trialPeriodDays ?? 0,
-        pricingStrategy: input.pricingStrategy as
-          'percentage_discount' | 'fixed_price' | 'tiered',
-        discountValue:
-          input.discountValue == null
-            ? null
-            : new Prisma.Decimal(input.discountValue),
         boxConfig: boxConfig ?? Prisma.JsonNull,
         productIds,
         collectionIds,
       },
       include: planInclude,
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return mapPlanToGql(plan);
   },
@@ -290,19 +327,11 @@ export const planMutations = {
     );
 
     try {
-      await updateSellingPlanGroup(shop, existing.shopifySellingPlanGroupId, {
-        name: existing.name,
-        description: existing.description,
-        planType: existing.planType as 'standard' | 'prepaid' | 'box',
-        frequencies,
-        productIds: existing.productIds,
-        collectionIds: existing.collectionIds,
-        pricingStrategy: existing.pricingStrategy,
-        discountValue:
-          existing.discountValue == null
-            ? null
-            : Number(existing.discountValue),
-      });
+      await resyncSellingPlanGroup(
+        shop,
+        existing.shopifySellingPlanGroupId,
+        sellingPlanInputFromRecord(existing, frequencies),
+      );
     } catch (error) {
       throw userInputError(
         error instanceof Error
@@ -315,6 +344,8 @@ export const planMutations = {
       where: { id: existing.id },
       include: planInclude,
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return mapPlanToGql(plan!);
   },
@@ -356,6 +387,8 @@ export const planMutations = {
       },
       include: planInclude,
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return mapPlanToGql(plan);
   },
@@ -412,6 +445,8 @@ export const planMutations = {
       include: planInclude,
     });
 
+    await refreshStorefrontPlanFilter(context, shop);
+
     return mapPlanToGql(plan);
   },
 
@@ -461,6 +496,8 @@ export const planMutations = {
     await context.prisma.subscriptionPlan.delete({
       where: { id: existing.id },
     });
+
+    await refreshStorefrontPlanFilter(context, shop);
 
     return snapshot;
   },

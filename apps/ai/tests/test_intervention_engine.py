@@ -5,8 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from src.interventions.engine import InterventionEngine, MAX_INTERVENTIONS_30D
+from src.interventions.engine import MAX_INTERVENTIONS_30D, InterventionEngine
 
 
 @pytest.fixture
@@ -71,7 +70,11 @@ async def test_skips_when_rate_limited(mock_pool: MagicMock) -> None:
 
     with (
         patch.object(engine, "_load_context", AsyncMock(return_value=ctx)),
-        patch.object(engine, "_has_pending_intervention", AsyncMock(return_value=False)),
+        patch.object(
+            engine,
+            "_has_pending_intervention",
+            AsyncMock(return_value=False),
+        ),
         patch.object(
             engine,
             "_intervention_count_30d",
@@ -94,7 +97,11 @@ async def test_skips_when_no_intervention_needed(mock_pool: MagicMock) -> None:
 
     with (
         patch.object(engine, "_load_context", AsyncMock(return_value=ctx)),
-        patch.object(engine, "_has_pending_intervention", AsyncMock(return_value=False)),
+        patch.object(
+            engine,
+            "_has_pending_intervention",
+            AsyncMock(return_value=False),
+        ),
         patch.object(engine, "_intervention_count_30d", AsyncMock(return_value=0)),
     ):
         result = await engine.evaluate_and_intervene(
@@ -113,7 +120,11 @@ async def test_creates_intervention_for_high_churn(mock_pool: MagicMock) -> None
 
     with (
         patch.object(engine, "_load_context", AsyncMock(return_value=ctx)),
-        patch.object(engine, "_has_pending_intervention", AsyncMock(return_value=False)),
+        patch.object(
+            engine,
+            "_has_pending_intervention",
+            AsyncMock(return_value=False),
+        ),
         patch.object(engine, "_intervention_count_30d", AsyncMock(return_value=0)),
         patch.object(
             engine,

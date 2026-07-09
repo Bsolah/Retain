@@ -6,6 +6,7 @@ import {
   prisma,
   type Shop,
 } from '@retain/database';
+import { toShopifyGid, upsertContractFromWebhook } from '@retain/shopify-admin';
 import { shopifyAdminGraphql } from '../shopify-client.js';
 import { logEvent } from '../events.js';
 import { setMigrationProgress, calculatePercent } from './progress.js';
@@ -94,6 +95,103 @@ async function ensureShopifyCustomer(
     });
     return fallbackGid;
   }
+}
+
+async function syncShopifySubscriptionCustomerRecord(
+  shop: Shop,
+  recordId: string,
+  customer: SourceCustomer,
+): Promise<string> {
+  const shopifyCustomerId = customer.sourceId.startsWith('gid://')
+    ? customer.sourceId
+    : toShopifyGid('Customer', customer.sourceId);
+
+  const localCustomer = await prisma.customer.upsert({
+    where: {
+      shopId_shopifyCustomerId: { shopId: shop.id, shopifyCustomerId },
+    },
+    create: {
+      shopId: shop.id,
+      shopifyCustomerId,
+      email: customer.email,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phone: customer.phone,
+    },
+    update: {
+      email: customer.email,
+      firstName: customer.firstName ?? undefined,
+      lastName: customer.lastName ?? undefined,
+      phone: customer.phone ?? undefined,
+    },
+  });
+
+  await prisma.migrationRecord.update({
+    where: { id: recordId },
+    data: {
+      status: MigrationRecordStatus.synced,
+      shopifyCustomerId,
+      localCustomerId: localCustomer.id,
+      syncedAt: new Date(),
+      errorMessage: null,
+    },
+  });
+
+  return shopifyCustomerId;
+}
+
+async function syncShopifySubscriptionContractRecord(
+  shop: Shop,
+  migrationId: string,
+  recordId: string,
+  contract: SourceContract,
+): Promise<void> {
+  const raw = contract.raw as {
+    status?: string;
+    nextBillingDate?: string | null;
+    customer?: {
+      id: string;
+      email?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+    };
+  };
+
+  const localContract = await upsertContractFromWebhook({
+    shopDomain: shop.shopifyDomain,
+    topic: 'migration/shopify_subscriptions',
+    payload: {
+      admin_graphql_api_id: contract.sourceId,
+      status: contract.status ?? raw.status,
+      next_billing_date: contract.nextBillingDate ?? raw.nextBillingDate,
+      customer: raw.customer
+        ? {
+            admin_graphql_api_id: raw.customer.id,
+            email: raw.customer.email,
+            first_name: raw.customer.firstName,
+            last_name: raw.customer.lastName,
+            phone: raw.customer.phone,
+          }
+        : {
+            admin_graphql_api_id: contract.sourceCustomerId,
+          },
+    },
+    webhookId: `migration-${migrationId}-${recordId}`,
+  });
+
+  await prisma.migrationRecord.update({
+    where: { id: recordId },
+    data: {
+      status: MigrationRecordStatus.synced,
+      shopifyContractId: contract.sourceId,
+      shopifyCustomerId: contract.sourceCustomerId,
+      localContractId: localContract.id,
+      localCustomerId: localContract.customerId,
+      syncedAt: new Date(),
+      errorMessage: null,
+    },
+  });
 }
 
 async function syncContractRecord(
@@ -216,26 +314,37 @@ export async function runMigrationSync(
   for (const record of customerRecords) {
     try {
       const customer = record.payload as unknown as SourceCustomer;
-      const gid = await ensureShopifyCustomer(shop, customer);
-      customerGidMap.set(customer.sourceId, gid);
-      await prisma.migrationRecord.update({
-        where: { id: record.id },
-        data: {
-          status: MigrationRecordStatus.synced,
-          shopifyCustomerId: gid,
-          localCustomerId: (
-            await prisma.customer.findUnique({
-              where: {
-                shopId_shopifyCustomerId: {
-                  shopId: shop.id,
-                  shopifyCustomerId: gid,
+      const gid =
+        migration.platform === 'shopify_subscriptions'
+          ? await syncShopifySubscriptionCustomerRecord(
+              shop,
+              record.id,
+              customer,
+            )
+          : await ensureShopifyCustomer(shop, customer);
+      if (migration.platform !== 'shopify_subscriptions') {
+        customerGidMap.set(customer.sourceId, gid);
+        await prisma.migrationRecord.update({
+          where: { id: record.id },
+          data: {
+            status: MigrationRecordStatus.synced,
+            shopifyCustomerId: gid,
+            localCustomerId: (
+              await prisma.customer.findUnique({
+                where: {
+                  shopId_shopifyCustomerId: {
+                    shopId: shop.id,
+                    shopifyCustomerId: gid,
+                  },
                 },
-              },
-            })
-          )?.id,
-          syncedAt: new Date(),
-        },
-      });
+              })
+            )?.id,
+            syncedAt: new Date(),
+          },
+        });
+      } else {
+        customerGidMap.set(customer.sourceId, gid);
+      }
       completed += 1;
     } catch (error) {
       failed += 1;
@@ -268,13 +377,22 @@ export async function runMigrationSync(
   for (const record of contractRecords) {
     try {
       const contract = record.payload as unknown as SourceContract;
-      await syncContractRecord(
-        shop,
-        migrationId,
-        record.id,
-        contract,
-        customerGidMap,
-      );
+      if (migration.platform === 'shopify_subscriptions') {
+        await syncShopifySubscriptionContractRecord(
+          shop,
+          migrationId,
+          record.id,
+          contract,
+        );
+      } else {
+        await syncContractRecord(
+          shop,
+          migrationId,
+          record.id,
+          contract,
+          customerGidMap,
+        );
+      }
       completed += 1;
     } catch (error) {
       failed += 1;

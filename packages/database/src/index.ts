@@ -10,7 +10,6 @@ import type {
   NotificationLog,
   PlanStatus as PlanStatusType,
   PlanType as PlanTypeType,
-  PricingStrategy as PricingStrategyType,
   PrismaClient as PrismaClientType,
   Shop,
   SubscriberSignal,
@@ -49,9 +48,6 @@ export type PlanStatus = PlanStatusType;
 
 export const PlanType = prismaClient.PlanType;
 export type PlanType = PlanTypeType;
-
-export const PricingStrategy = prismaClient.PricingStrategy;
-export type PricingStrategy = PricingStrategyType;
 
 export const ContractStatus = prismaClient.ContractStatus;
 export type ContractStatus = ContractStatusType;

@@ -1,17 +1,10 @@
 import { Badge, BlockStack, Card, InlineStack, Text } from '@shopify/polaris';
-import type {
-  BoxConfig,
-  PlanFrequency,
-  PlanType,
-  PricingStrategy,
-} from '../../types/plans';
+import type { BoxConfig, PlanFrequency, PlanType } from '../../types/plans';
 
 type PlanPreviewCardProps = {
   name: string;
   description: string;
   planType: PlanType;
-  pricingStrategy: PricingStrategy;
-  discountValue: number;
   frequencies: PlanFrequency[];
   boxConfig?: BoxConfig | null;
   productCount: number;
@@ -22,8 +15,6 @@ export function PlanPreviewCard({
   name,
   description,
   planType,
-  pricingStrategy,
-  discountValue,
   frequencies,
   boxConfig,
   productCount,
@@ -56,11 +47,10 @@ export function PlanPreviewCard({
                 : planType === 'prepaid'
                   ? ` · billed every ${frequency.prepaidBillingInterval ?? frequency.interval * 3} ${frequency.unit}s`
                   : ''}
-              {frequency.discountPercent != null
+              {frequency.discountPercent != null &&
+              frequency.discountPercent > 0
                 ? ` · ${frequency.discountPercent}% off`
-                : pricingStrategy === 'percentage_discount'
-                  ? ` · ${discountValue}% off`
-                  : ''}
+                : ''}
             </Text>
           ))}
         </BlockStack>

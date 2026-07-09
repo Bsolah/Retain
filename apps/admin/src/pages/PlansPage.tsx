@@ -11,7 +11,6 @@ import {
   useArchivePlan,
   useDeletePlan,
   usePlans,
-  useResyncPlan,
   useUnarchivePlan,
 } from '../hooks/usePlans';
 import type { SubscriptionPlan } from '../types/plans';
@@ -23,11 +22,9 @@ export function PlansPage() {
   const deletePlan = useDeletePlan();
   const archivePlan = useArchivePlan();
   const unarchivePlan = useUnarchivePlan();
-  const resyncPlan = useResyncPlan();
   const [planToDelete, setPlanToDelete] = useState<SubscriptionPlan | null>(
     null,
   );
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(
     Boolean(
       (location.state as { showStorefrontSetup?: boolean } | null)
@@ -41,11 +38,8 @@ export function PlansPage() {
   };
 
   const pendingPlanId =
-    archivePlan.isPending || unarchivePlan.isPending || resyncPlan.isPending
-      ? (archivePlan.variables ??
-        unarchivePlan.variables ??
-        resyncPlan.variables ??
-        null)
+    archivePlan.isPending || unarchivePlan.isPending
+      ? (archivePlan.variables ?? unarchivePlan.variables ?? null)
       : null;
 
   return (
@@ -101,26 +95,6 @@ export function PlansPage() {
           </Banner>
         ) : null}
 
-        {resyncPlan.isError ? (
-          <Banner tone="critical" title="Storefront sync failed">
-            <p>
-              {resyncPlan.error instanceof Error
-                ? resyncPlan.error.message
-                : 'Unknown error'}
-            </p>
-          </Banner>
-        ) : null}
-
-        {syncMessage ? (
-          <Banner
-            tone="success"
-            title="Storefront synced"
-            onDismiss={() => setSyncMessage(null)}
-          >
-            <p>{syncMessage}</p>
-          </Banner>
-        ) : null}
-
         {data ? (
           <PlansTable
             plans={data}
@@ -128,14 +102,6 @@ export function PlansPage() {
             onArchive={(plan) => archivePlan.mutate(plan.id)}
             onUnarchive={(plan) => unarchivePlan.mutate(plan.id)}
             onDelete={setPlanToDelete}
-            onResync={(plan) =>
-              resyncPlan.mutate(plan.id, {
-                onSuccess: () =>
-                  setSyncMessage(
-                    `"${plan.name}" now matches your storefront options.`,
-                  ),
-              })
-            }
           />
         ) : null}
 

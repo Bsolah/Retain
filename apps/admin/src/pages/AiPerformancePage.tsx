@@ -25,6 +25,15 @@ import {
 } from 'recharts';
 import { useAiPerformance } from '../hooks/useAnalytics';
 
+const METRIC_EXPLANATIONS: Record<string, string> = {
+  Precision:
+    'When AI flags a subscriber as at-risk, this is how often it is correct.',
+  Recall:
+    'Of all subscribers who churn, this is how many the AI catches early.',
+  F1: 'A balanced score that combines precision and recall.',
+  AUC: 'How well the model separates low-risk vs high-risk subscribers overall.',
+};
+
 export function AiPerformancePage() {
   const { data, isLoading, isError, error, refetch } = useAiPerformance();
   const [versionA, setVersionA] = useState('');
@@ -56,6 +65,12 @@ export function AiPerformancePage() {
   return (
     <Page title="AI performance">
       <BlockStack gap="400">
+        <Banner tone="info" title="What this page tells you">
+          <p>
+            Use this page to understand whether Retain AI is accurately spotting
+            churn risk and whether AI-driven interventions are saving revenue.
+          </p>
+        </Banner>
         {isLoading ? <Spinner accessibilityLabel="Loading AI metrics" /> : null}
         {isError ? (
           <Banner
@@ -69,12 +84,15 @@ export function AiPerformancePage() {
 
         {data?.activeModel ? (
           <Card>
-            <BlockStack gap="200">
+            <BlockStack gap="300">
               <Text as="h3" variant="headingMd">
-                Active model: {data.activeModel.version}
+                Current AI model: {data.activeModel.version}
               </Text>
               <Text as="p" tone="subdued">
-                Rollout {data.activeModel.rolloutPercentage}%
+                Traffic rollout: {data.activeModel.rolloutPercentage}%
+              </Text>
+              <Text as="p" tone="subdued">
+                Higher percentages below usually mean better model quality.
               </Text>
               <InlineGrid columns={{ xs: 1, sm: 2, md: 4 }} gap="300">
                 {gauges.map((metric) => (
@@ -111,6 +129,9 @@ export function AiPerformancePage() {
                       <Text as="p" alignment="center" variant="headingMd">
                         {metric.value.toFixed(1)}%
                       </Text>
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        {METRIC_EXPLANATIONS[metric.name]}
+                      </Text>
                     </BlockStack>
                   </Card>
                 ))}
@@ -120,7 +141,9 @@ export function AiPerformancePage() {
         ) : (
           <Banner tone="info" title="No trained model yet">
             <p>
-              Train a model from the AI service to populate accuracy gauges.
+              No model is currently available for this store. Once a model is
+              trained and deployed, this section will show quality scores
+              (precision, recall, F1, AUC).
             </p>
           </Banner>
         )}
@@ -129,7 +152,11 @@ export function AiPerformancePage() {
           <Card>
             <BlockStack gap="300">
               <Text as="h3" variant="headingMd">
-                Intervention success by type
+                AI intervention results by type
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                Success rate shows the share of sent interventions that were
+                accepted.
               </Text>
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer>
@@ -148,7 +175,10 @@ export function AiPerformancePage() {
           <Card>
             <BlockStack gap="300">
               <Text as="h3" variant="headingMd">
-                Feature importance
+                What the model pays most attention to
+              </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                These factors have the strongest impact on churn predictions.
               </Text>
               <div style={{ width: '100%', height: 280 }}>
                 <ResponsiveContainer>
@@ -171,13 +201,13 @@ export function AiPerformancePage() {
         <Card>
           <BlockStack gap="200">
             <Text as="h3" variant="headingMd">
-              Revenue saved
+              Estimated revenue saved
             </Text>
             <Text as="p" variant="headingLg">
               ${(data?.revenueSaved ?? 0).toLocaleString()}
             </Text>
             <Text as="p" tone="subdued">
-              Sum of revenueImpact on interventions with outcome = saved
+              Total revenue impact from interventions marked as saved.
             </Text>
           </BlockStack>
         </Card>
@@ -185,11 +215,15 @@ export function AiPerformancePage() {
         <Card>
           <BlockStack gap="300">
             <Text as="h3" variant="headingMd">
-              Model version history
+              Model history
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Track which model is live, when it was created, and rollout
+              percentage.
             </Text>
             <DataTable
               columnContentTypes={['text', 'text', 'numeric', 'text']}
-              headings={['Version', 'Active', 'Rollout %', 'Created']}
+              headings={['Model version', 'Live now', 'Rollout %', 'Created']}
               rows={(data?.modelHistory ?? []).map((model) => [
                 model.version,
                 model.isActive ? 'Yes' : 'No',
@@ -203,17 +237,21 @@ export function AiPerformancePage() {
         <Card>
           <BlockStack gap="300">
             <Text as="h3" variant="headingMd">
-              A/B test comparison
+              Compare two model versions
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Use this to decide which model performs better before or during
+              rollout.
             </Text>
             <InlineGrid columns={2} gap="300">
               <Select
-                label="Model A"
+                label="Model A (baseline)"
                 options={historyOptions}
                 value={versionA}
                 onChange={setVersionA}
               />
               <Select
-                label="Model B"
+                label="Model B (candidate)"
                 options={historyOptions}
                 value={versionB}
                 onChange={setVersionB}
@@ -231,7 +269,7 @@ export function AiPerformancePage() {
               />
             ) : (
               <Text as="p" tone="subdued">
-                Select two model versions to compare metrics.
+                Select two model versions to compare quality scores.
               </Text>
             )}
           </BlockStack>

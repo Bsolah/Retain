@@ -25,6 +25,7 @@ import { EditPlanPage } from './pages/EditPlanPage';
 import { MigrationsPage } from './pages/MigrationsPage';
 import { PlansPage } from './pages/PlansPage';
 import { SubscribersPage } from './pages/SubscribersPage';
+import { SupportPage } from './pages/SupportPage';
 
 function AppNavLink({
   to,
@@ -129,11 +130,12 @@ function AppRoutes() {
         <AppNavLink to="/dashboard" rel="home">
           Dashboard
         </AppNavLink>
-        <AppNavLink to="/cohorts">Retention</AppNavLink>
-        <AppNavLink to="/subscribers">Subscribers</AppNavLink>
-        <AppNavLink to="/ai">AI performance</AppNavLink>
         <AppNavLink to="/plans">Plans</AppNavLink>
+        <AppNavLink to="/subscribers">Subscribers</AppNavLink>
+        <AppNavLink to="/cohorts">Retention</AppNavLink>
+        <AppNavLink to="/ai">AI Performance</AppNavLink>
         <AppNavLink to="/migrations">Migrations</AppNavLink>
+        <AppNavLink to="/support">Support</AppNavLink>
       </NavMenu>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -143,6 +145,7 @@ function AppRoutes() {
         <Route path="/ai" element={<AiPerformancePage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/migrations" element={<MigrationsPage />} />
+        <Route path="/support" element={<SupportPage />} />
         <Route path="/plans/new" element={<CreatePlanPage />} />
         <Route path="/plans/:planId/edit" element={<EditPlanPage />} />
       </Routes>

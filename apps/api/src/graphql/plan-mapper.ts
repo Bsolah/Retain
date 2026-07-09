@@ -1,4 +1,5 @@
 import type { SubscriptionPlan as DbPlan } from '@retain/database';
+import { computeSubscriptionValueFromLineItems } from '@retain/shopify-admin';
 import type { ValidatedFrequency } from '../services/plan-validation.js';
 
 const ACTIVE_STATUSES = new Set(['active', 'paused', 'payment_failed']);
@@ -12,10 +13,6 @@ export type PlanGql = {
   status: 'active' | 'paused' | 'archived';
   planType: 'standard' | 'prepaid' | 'box';
   frequencies: ValidatedFrequency[];
-  minimumCommitment: number | null;
-  trialPeriodDays: number;
-  pricingStrategy: 'percentage_discount' | 'fixed_price' | 'tiered';
-  discountValue: number | null;
   boxConfig: {
     minItems?: number | null;
     maxItems?: number | null;
@@ -83,19 +80,35 @@ function parseBoxConfig(value: unknown): PlanGql['boxConfig'] {
   };
 }
 
+function contractSubscriptionValue(contract: {
+  lineItems?: unknown;
+  totalRevenue: { toString(): string } | number;
+}): number {
+  const fromLineItems = computeSubscriptionValueFromLineItems(
+    contract.lineItems,
+  );
+  if (fromLineItems > 0) {
+    return fromLineItems;
+  }
+  return Number(contract.totalRevenue ?? 0);
+}
+
 export function mapPlanToGql(
   plan: DbPlan & {
     contracts?: Array<{
       status: string;
+      lineItems?: unknown;
       totalRevenue: { toString(): string } | number;
     }>;
   },
 ): PlanGql {
   const contracts = plan.contracts ?? [];
-  const revenue = contracts.reduce(
-    (sum, contract) => sum + Number(contract.totalRevenue ?? 0),
-    0,
-  );
+  const revenue = contracts.reduce((sum, contract) => {
+    if (!ACTIVE_STATUSES.has(contract.status)) {
+      return sum;
+    }
+    return sum + contractSubscriptionValue(contract);
+  }, 0);
   const subscriberCount = contracts.filter((contract) =>
     ACTIVE_STATUSES.has(contract.status),
   ).length;
@@ -109,11 +122,6 @@ export function mapPlanToGql(
     status: plan.status,
     planType: plan.planType,
     frequencies: parseFrequencies(plan.frequencies),
-    minimumCommitment: plan.minimumCommitment,
-    trialPeriodDays: plan.trialPeriodDays,
-    pricingStrategy: plan.pricingStrategy,
-    discountValue:
-      plan.discountValue == null ? null : Number(plan.discountValue),
     boxConfig: parseBoxConfig(plan.boxConfig),
     productIds: plan.productIds,
     collectionIds: plan.collectionIds,

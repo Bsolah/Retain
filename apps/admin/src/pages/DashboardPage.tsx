@@ -10,6 +10,7 @@ import {
   Text,
 } from '@shopify/polaris';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Area,
   AreaChart,
@@ -38,6 +39,7 @@ const PIE_COLORS = ['#4f46e5', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 const GROWTH_VIEWS: Array<30 | 90 | 365> = [30, 90, 365];
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const [range, setRange] = useState<DateRangeKey>('30d');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -62,6 +64,10 @@ export function DashboardPage() {
         loading: isFetching,
       }}
       secondaryActions={[
+        {
+          content: 'Get support',
+          onAction: () => navigate('/support'),
+        },
         {
           content: 'Export CSV',
           onAction: () => downloadCsv('dashboard-analytics.csv', exportRows),

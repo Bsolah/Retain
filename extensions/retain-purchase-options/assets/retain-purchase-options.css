@@ -1,37 +1,173 @@
+/**
+ * Shared Retain purchase-options styles (app block + native theme snippet).
+ * All rules scoped under .retain-purchase-options to override OS 2.0 themes
+ * (e.g. Horizon label:has(radio) inline-flex, custom radios, legend sizing).
+ */
 .retain-purchase-options {
-  margin: 1rem 0;
+  margin: 1rem 0 1.25rem;
+  font-size: 1rem;
+  line-height: 1.3;
 }
 
 .retain-purchase-options__heading {
+  font-size: 1.05rem;
   font-weight: 600;
   margin: 0 0 0.75rem;
 }
 
-.retain-purchase-options__fieldset {
-  border: 1px solid rgba(var(--color-foreground), 0.15);
-  border-radius: 0.25rem;
-  padding: 0.75rem 1rem;
+.retain-purchase-options .retain-purchase-options__fieldset {
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 0.85rem 1rem !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+.retain-purchase-options .retain-purchase-options__legend {
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  float: none !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 0.25rem !important;
+}
+
+.retain-purchase-options .retain-purchase-options__list {
+  list-style: none;
+  padding: 0;
   margin: 0;
 }
 
-.retain-purchase-options__legend {
-  font-weight: 600;
-  padding: 0 0.25rem;
+.retain-purchase-options
+  .retain-purchase-options__item
+  + .retain-purchase-options__item {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.retain-purchase-options__option {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
+/* Row: radio · copy · price (matches native snippet grid) */
+.retain-purchase-options label.retain-purchase-options__option {
+  display: grid !important;
+  grid-template-columns: min-content minmax(0, 1fr) min-content !important;
+  align-items: center !important;
+  column-gap: 0.85rem !important;
+  row-gap: 0 !important;
+  gap: 0 !important;
+  padding: 0.7rem 0 !important;
+  margin: 0 !important;
   cursor: pointer;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
-.retain-purchase-options__price {
-  margin-left: auto;
-  opacity: 0.85;
+.retain-purchase-options
+  label.retain-purchase-options__option
+  input[type='radio'] {
+  appearance: auto !important;
+  -webkit-appearance: radio !important;
+  box-sizing: border-box !important;
+  flex: none !important;
+  flex-shrink: 0 !important;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  min-width: 1.25rem !important;
+  min-height: 1.25rem !important;
+  max-width: 1.25rem !important;
+  max-height: 1.25rem !important;
+  aspect-ratio: unset !important;
+  margin: 0 !important;
+  margin-inline: 0 !important;
+  margin-inline-end: 0 !important;
+  padding: 0 !important;
+  border: revert !important;
+  border-radius: revert !important;
+  background: revert !important;
+  position: static !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  cursor: pointer !important;
+  transition: none !important;
+  transform: none !important;
 }
 
+.retain-purchase-options
+  label.retain-purchase-options__option
+  input[type='radio']::before,
+.retain-purchase-options
+  label.retain-purchase-options__option
+  input[type='radio']::after {
+  content: none !important;
+  display: none !important;
+}
+
+.retain-purchase-options .retain-purchase-options__copy {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.15rem !important;
+  min-width: 0 !important;
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+}
+
+.retain-purchase-options .retain-purchase-options__label {
+  font-size: inherit !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+}
+
+.retain-purchase-options .retain-purchase-options__subtext {
+  font-size: 0.85em !important;
+  font-weight: 400 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  color: rgba(0, 0, 0, 0.62) !important;
+}
+
+.retain-purchase-options .retain-purchase-options__price {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+  justify-self: end !important;
+  align-self: center !important;
+  margin: 0 !important;
+  margin-inline-start: 0 !important;
+  font-size: inherit !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+  text-align: right !important;
+}
+
+.retain-price-delivery {
+  display: none !important;
+}
+
+/* Hide theme-native / custom selling plan UI when Retain block is present */
+body.retain-hide-native-selling-plans
+  product-subscriptions:not([data-retain-purchase-options]):not(
+    [data-retain-theme-purchase-options]
+  ),
+body.retain-hide-native-selling-plans [data-module='product/subscriptions'],
+body.retain-hide-native-selling-plans [data-selling-plan-group],
+body.retain-hide-native-selling-plans .selling-plan-group,
+body.retain-hide-native-selling-plans .product-form__selling-plan,
+body.retain-hide-native-selling-plans .product__selling-plans,
+body.retain-hide-native-selling-plans .selling-plans,
+body.retain-hide-native-selling-plans .subscription-options,
+body.retain-hide-native-selling-plans
+  .purchase-options:not(.retain-purchase-options),
+body.retain-hide-native-selling-plans select[name='purchase_option_values'],
+body.retain-hide-native-selling-plans
+  .selling_plan_app_container:not(.retain-purchase-options) {
+  display: none !important;
+}
+
+.selling_plan_theme_integration--hidden,
 .retain-purchase-options--hidden {
   display: none !important;
 }

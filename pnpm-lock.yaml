@@ -146,6 +146,9 @@ importers:
       '@retain/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@retain/shopify-admin':
+        specifier: workspace:*
+        version: link:../../packages/shopify-admin
       '@types/handlebars':
         specifier: ^4.1.0
         version: 4.1.0
@@ -289,6 +292,9 @@ importers:
       '@retain/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@retain/shopify-admin':
+        specifier: workspace:*
+        version: link:../../packages/shopify-admin
       bullmq:
         specifier: ^5.13.0
         version: 5.79.2
@@ -344,6 +350,22 @@ importers:
         version: 5.9.3
 
   packages/shared:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.43
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.0
+      typescript:
+        specifier: ^5.6.2
+        version: 5.9.3
+
+  packages/shopify-admin:
+    dependencies:
+      '@retain/database':
+        specifier: workspace:*
+        version: link:../database
     devDependencies:
       '@types/node':
         specifier: ^20.16.5

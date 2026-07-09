@@ -36,12 +36,6 @@ enum PlanType {
   box
 }
 
-enum PricingStrategy {
-  percentage_discount
-  fixed_price
-  tiered
-}
-
 enum ContractStatus {
   active
   paused
@@ -215,10 +209,6 @@ model SubscriptionPlan {
   status                    PlanStatus      @default(active)
   planType                  PlanType        @default(standard) @map("plan_type")
   frequencies               Json            @default("[]") @db.JsonB
-  minimumCommitment         Int?            @map("minimum_commitment")
-  trialPeriodDays           Int             @default(0) @map("trial_period_days")
-  pricingStrategy           PricingStrategy @default(percentage_discount) @map("pricing_strategy")
-  discountValue             Decimal?        @map("discount_value") @db.Decimal(12, 2)
   boxConfig                 Json?           @map("box_config") @db.JsonB
   /// Shopify product GIDs (gid://shopify/Product/...)
   productIds                String[]        @default([]) @map("product_ids")

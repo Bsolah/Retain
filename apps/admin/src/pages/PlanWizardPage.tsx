@@ -3,7 +3,6 @@ import {
   BlockStack,
   Card,
   FormLayout,
-  InlineStack,
   Layout,
   Page,
   Select,
@@ -19,18 +18,12 @@ import { PlanPreviewCard } from '../components/plans/PlanPreviewCard';
 import { ProductSelector } from '../components/plans/ProductSelector';
 import { useCreatePlan, usePlan, useUpdatePlan } from '../hooks/usePlans';
 import { usePlanWizardStore } from '../stores/plan-wizard';
-import type { PlanType, PricingStrategy } from '../types/plans';
+import type { PlanType } from '../types/plans';
 
 const PLAN_TYPE_OPTIONS = [
   { label: 'Standard', value: 'standard' },
   { label: 'Prepaid', value: 'prepaid' },
   { label: 'Box', value: 'box' },
-];
-
-const PRICING_OPTIONS = [
-  { label: 'Percentage discount', value: 'percentage_discount' },
-  { label: 'Fixed price', value: 'fixed_price' },
-  { label: 'Tiered', value: 'tiered' },
 ];
 
 type PlanWizardPageProps = {
@@ -56,12 +49,6 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
   const name = usePlanWizardStore((state) => state.name);
   const description = usePlanWizardStore((state) => state.description);
   const planType = usePlanWizardStore((state) => state.planType);
-  const pricingStrategy = usePlanWizardStore((state) => state.pricingStrategy);
-  const discountValue = usePlanWizardStore((state) => state.discountValue);
-  const trialPeriodDays = usePlanWizardStore((state) => state.trialPeriodDays);
-  const minimumCommitment = usePlanWizardStore(
-    (state) => state.minimumCommitment,
-  );
   const frequencies = usePlanWizardStore((state) => state.frequencies);
   const productIds = usePlanWizardStore((state) => state.productIds);
   const collectionIds = usePlanWizardStore((state) => state.collectionIds);
@@ -92,9 +79,6 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
   const validateStep = (): string | null => {
     if (step === 0) {
       if (!name.trim()) return 'Plan name is required';
-      return null;
-    }
-    if (step === 1) {
       if (frequencies.length === 0) return 'Add at least one frequency';
       if (planType === 'prepaid') {
         for (const frequency of frequencies) {
@@ -116,7 +100,7 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
       }
       return null;
     }
-    if (step === 2 && planType === 'box' && boxConfig) {
+    if (step === 1 && planType === 'box' && boxConfig) {
       if (productIds.length < boxConfig.minItems) {
         return `Select at least ${boxConfig.minItems} product(s) for the box pool`;
       }
@@ -135,7 +119,7 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
     }
     setFormError(null);
 
-    if (step < 2) {
+    if (step < 1) {
       nextStep();
       return;
     }
@@ -203,7 +187,7 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
       backAction={{ content: 'Plans', onAction: () => navigate('/plans') }}
       primaryAction={{
         content:
-          step === 2
+          step === 1
             ? mode === 'edit'
               ? 'Save changes'
               : 'Create plan'
@@ -220,12 +204,11 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
       <Layout>
         <Layout.Section>
           <BlockStack gap="400">
-            <Banner tone="info" title={`Step ${step + 1} of 3`}>
+            <Banner tone="info" title={`Step ${step + 1} of 2`}>
               <p>
-                {step === 0 && 'Basic information'}
-                {step === 1 && 'Frequencies and discounts'}
-                {step === 1 && planType === 'box' ? ' · box setup' : ''}
-                {step === 2 && 'Products and collections'}
+                {step === 0 && 'Plan details and delivery options'}
+                {step === 0 && planType === 'box' ? ' · box setup' : ''}
+                {step === 1 && 'Products and collections'}
               </p>
             </Banner>
 
@@ -247,183 +230,71 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
 
             <Card>
               {step === 0 ? (
-                <FormLayout>
-                  <TextField
-                    label="Name"
-                    value={name}
-                    placeholder={
-                      mode === 'create'
-                        ? 'e.g. Monthly Coffee Subscription'
-                        : undefined
-                    }
-                    helpText={
-                      mode === 'create'
-                        ? 'Customer-facing name for this subscription plan'
-                        : undefined
-                    }
-                    onChange={(value) =>
-                      setBasicInfo({
-                        name: value,
-                        description,
-                        planType,
-                        pricingStrategy,
-                        discountValue,
-                        trialPeriodDays,
-                        minimumCommitment,
-                      })
-                    }
-                    autoComplete="off"
-                  />
-                  <TextField
-                    label="Description"
-                    value={description}
-                    multiline={3}
-                    placeholder={
-                      mode === 'create'
-                        ? 'e.g. Freshly roasted beans delivered to your door every month. Cancel anytime.'
-                        : undefined
-                    }
-                    helpText={
-                      mode === 'create'
-                        ? 'Optional — helps customers understand what they are subscribing to'
-                        : undefined
-                    }
-                    onChange={(value) =>
-                      setBasicInfo({
-                        name,
-                        description: value,
-                        planType,
-                        pricingStrategy,
-                        discountValue,
-                        trialPeriodDays,
-                        minimumCommitment,
-                      })
-                    }
-                    autoComplete="off"
-                  />
-                  <Select
-                    label="Plan type"
-                    options={PLAN_TYPE_OPTIONS}
-                    value={planType}
-                    helpText={
-                      mode === 'create'
-                        ? 'Standard = recurring orders; Prepaid = pay upfront; Box = curated product bundle'
-                        : undefined
-                    }
-                    onChange={(value) =>
-                      setBasicInfo({
-                        name,
-                        description,
-                        planType: value as PlanType,
-                        pricingStrategy,
-                        discountValue,
-                        trialPeriodDays,
-                        minimumCommitment,
-                      })
-                    }
-                  />
-                  <Select
-                    label="Pricing strategy"
-                    options={PRICING_OPTIONS}
-                    value={pricingStrategy}
-                    helpText={
-                      mode === 'create'
-                        ? 'Percentage off retail price, a fixed subscription price, or tiered discounts per frequency'
-                        : undefined
-                    }
-                    onChange={(value) =>
-                      setBasicInfo({
-                        name,
-                        description,
-                        planType,
-                        pricingStrategy: value as PricingStrategy,
-                        discountValue,
-                        trialPeriodDays,
-                        minimumCommitment,
-                      })
-                    }
-                  />
-                  <TextField
-                    label="Default discount value"
-                    type="number"
-                    value={String(discountValue)}
-                    placeholder={mode === 'create' ? '10' : undefined}
-                    helpText={
-                      mode === 'create'
-                        ? 'For percentage strategy: percent off (e.g. 10 = 10% off). For fixed price: amount in your shop currency'
-                        : undefined
-                    }
-                    onChange={(value) =>
-                      setBasicInfo({
-                        name,
-                        description,
-                        planType,
-                        pricingStrategy,
-                        discountValue: Number(value) || 0,
-                        trialPeriodDays,
-                        minimumCommitment,
-                      })
-                    }
-                    autoComplete="off"
-                  />
-                  <InlineStack gap="400">
-                    <TextField
-                      label="Trial days"
-                      type="number"
-                      value={String(trialPeriodDays)}
-                      placeholder={mode === 'create' ? '0' : undefined}
-                      helpText={
-                        mode === 'create'
-                          ? 'Free trial length before the first charge. Use 0 for no trial'
-                          : undefined
-                      }
-                      onChange={(value) =>
-                        setBasicInfo({
-                          name,
-                          description,
-                          planType,
-                          pricingStrategy,
-                          discountValue,
-                          trialPeriodDays: Number(value) || 0,
-                          minimumCommitment,
-                        })
-                      }
-                      autoComplete="off"
-                    />
-                    <TextField
-                      label="Minimum commitment"
-                      type="number"
-                      value={
-                        minimumCommitment == null
-                          ? ''
-                          : String(minimumCommitment)
-                      }
-                      placeholder={mode === 'create' ? 'e.g. 3' : undefined}
-                      helpText={
-                        mode === 'create'
-                          ? 'Optional minimum number of deliveries before cancel. Leave empty for none'
-                          : undefined
-                      }
-                      onChange={(value) =>
-                        setBasicInfo({
-                          name,
-                          description,
-                          planType,
-                          pricingStrategy,
-                          discountValue,
-                          trialPeriodDays,
-                          minimumCommitment:
-                            value === '' ? null : Number(value) || 0,
-                        })
-                      }
-                      autoComplete="off"
-                    />
-                  </InlineStack>
-                </FormLayout>
-              ) : null}
-
-              {step === 1 ? (
                 <BlockStack gap="500">
+                  <FormLayout>
+                    <TextField
+                      label="Name"
+                      value={name}
+                      placeholder={
+                        mode === 'create'
+                          ? 'e.g. Monthly Coffee Subscription'
+                          : undefined
+                      }
+                      helpText={
+                        mode === 'create'
+                          ? 'Customer-facing name for this subscription plan'
+                          : undefined
+                      }
+                      onChange={(value) =>
+                        setBasicInfo({
+                          name: value,
+                          description,
+                          planType,
+                        })
+                      }
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="Description"
+                      value={description}
+                      multiline={3}
+                      placeholder={
+                        mode === 'create'
+                          ? 'e.g. Freshly roasted beans delivered to your door every month. Cancel anytime.'
+                          : undefined
+                      }
+                      helpText={
+                        mode === 'create'
+                          ? 'Optional — helps customers understand what they are subscribing to'
+                          : undefined
+                      }
+                      onChange={(value) =>
+                        setBasicInfo({
+                          name,
+                          description: value,
+                          planType,
+                        })
+                      }
+                      autoComplete="off"
+                    />
+                    <Select
+                      label="Plan type"
+                      options={PLAN_TYPE_OPTIONS}
+                      value={planType}
+                      helpText={
+                        mode === 'create'
+                          ? 'Standard = recurring orders; Prepaid = pay upfront; Box = curated product bundle'
+                          : undefined
+                      }
+                      onChange={(value) =>
+                        setBasicInfo({
+                          name,
+                          description,
+                          planType: value as PlanType,
+                        })
+                      }
+                    />
+                  </FormLayout>
                   <FrequencyBuilder showHints={mode === 'create'} />
                   {planType === 'box' ? (
                     <BoxConfigBuilder showHints={mode === 'create'} />
@@ -431,7 +302,7 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
                 </BlockStack>
               ) : null}
 
-              {step === 2 ? (
+              {step === 1 ? (
                 <BlockStack gap="500">
                   <ProductSelector showHints={mode === 'create'} />
                   <CollectionSelector showHints={mode === 'create'} />
@@ -446,8 +317,6 @@ export function PlanWizardPage({ mode }: PlanWizardPageProps) {
             name={name}
             description={description}
             planType={planType}
-            pricingStrategy={pricingStrategy}
-            discountValue={discountValue}
             frequencies={frequencies}
             boxConfig={boxConfig}
             productCount={productIds.length}

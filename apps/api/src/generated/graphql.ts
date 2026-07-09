@@ -229,14 +229,10 @@ export type PlanInput = {
   boxConfig?: InputMaybe<BoxConfigInput>;
   collectionIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   description?: InputMaybe<Scalars['String']['input']>;
-  discountValue?: InputMaybe<Scalars['Float']['input']>;
   frequencies: Array<PlanFrequencyInput>;
-  minimumCommitment?: InputMaybe<Scalars['Int']['input']>;
   name: Scalars['String']['input'];
   planType: PlanType;
-  pricingStrategy: PricingStrategy;
   productIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  trialPeriodDays?: InputMaybe<Scalars['Int']['input']>;
 };
 
 export type PlanStatus =
@@ -248,11 +244,6 @@ export type PlanType =
   | 'box'
   | 'prepaid'
   | 'standard';
-
-export type PricingStrategy =
-  | 'fixed_price'
-  | 'percentage_discount'
-  | 'tiered';
 
 export type Query = {
   __typename?: 'Query';
@@ -368,20 +359,16 @@ export type SubscriptionPlan = {
   collectionIds: Array<Scalars['ID']['output']>;
   createdAt: Scalars['String']['output'];
   description?: Maybe<Scalars['String']['output']>;
-  discountValue?: Maybe<Scalars['Float']['output']>;
   frequencies: Array<PlanFrequency>;
   id: Scalars['ID']['output'];
-  minimumCommitment?: Maybe<Scalars['Int']['output']>;
   name: Scalars['String']['output'];
   planType: PlanType;
-  pricingStrategy: PricingStrategy;
   productIds: Array<Scalars['ID']['output']>;
   revenue: Scalars['Float']['output'];
   shopId: Scalars['ID']['output'];
   shopifySellingPlanGroupId?: Maybe<Scalars['String']['output']>;
   status: PlanStatus;
   subscriberCount: Scalars['Int']['output'];
-  trialPeriodDays: Scalars['Int']['output'];
   updatedAt: Scalars['String']['output'];
 };
 
@@ -480,7 +467,6 @@ export type ResolversTypes = ResolversObject<{
   PlanInput: PlanInput;
   PlanStatus: PlanStatus;
   PlanType: PlanType;
-  PricingStrategy: PricingStrategy;
   Query: ResolverTypeWrapper<{}>;
   ShopifyCollection: ResolverTypeWrapper<ShopifyCollection>;
   ShopifyProduct: ResolverTypeWrapper<ShopifyProduct>;
@@ -659,20 +645,16 @@ export type SubscriptionPlanResolvers<ContextType = GraphQLContext, ParentType e
   collectionIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  discountValue?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   frequencies?: Resolver<Array<ResolversTypes['PlanFrequency']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  minimumCommitment?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   planType?: Resolver<ResolversTypes['PlanType'], ParentType, ContextType>;
-  pricingStrategy?: Resolver<ResolversTypes['PricingStrategy'], ParentType, ContextType>;
   productIds?: Resolver<Array<ResolversTypes['ID']>, ParentType, ContextType>;
   revenue?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   shopId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   shopifySellingPlanGroupId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['PlanStatus'], ParentType, ContextType>;
   subscriberCount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
-  trialPeriodDays?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 }>;

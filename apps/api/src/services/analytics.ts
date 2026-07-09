@@ -1,4 +1,5 @@
 import { ContractStatus, prisma } from '@retain/database';
+import { computeNextBillingDateFromPolicy } from '@retain/shopify-admin';
 
 type ContractWhere = NonNullable<
   Parameters<typeof prisma.subscriptionContract.findMany>[0]
@@ -452,6 +453,14 @@ function pseudoGeography(email: string): string {
   return 'Other';
 }
 
+function planHasDiscount(frequencies: unknown): boolean {
+  if (!Array.isArray(frequencies)) return false;
+  return frequencies.some(
+    (row) =>
+      Number((row as { discountPercent?: number }).discountPercent ?? 0) > 0,
+  );
+}
+
 export async function getCohortAnalysis(
   shopId: string,
   filters: CohortFilters = {},
@@ -469,8 +478,7 @@ export async function getCohortAnalysis(
         select: {
           name: true,
           productIds: true,
-          discountValue: true,
-          pricingStrategy: true,
+          frequencies: true,
         },
       },
     },
@@ -491,7 +499,7 @@ export async function getCohortAnalysis(
       }
     }
     if (filters.discount && filters.discount !== 'all') {
-      const hasDiscount = Number(contract.plan.discountValue ?? 0) > 0;
+      const hasDiscount = planHasDiscount(contract.plan.frequencies);
       if (filters.discount === 'with_discount' && !hasDiscount) return false;
       if (filters.discount === 'without_discount' && hasDiscount) return false;
     }
@@ -670,7 +678,7 @@ export async function listSubscribers(
       status: row.status,
       healthStatus: row.healthStatus,
       riskScore: row.churnRiskScore ?? row.predictedChurn30d ?? 0,
-      nextBillingDate: row.nextBillingDate,
+      nextBillingDate: resolveSubscriberNextBillingDate(row),
       totalRevenue: Number(row.totalRevenue),
       plan: row.plan,
       customer: {
@@ -687,13 +695,47 @@ export async function listSubscribers(
   };
 }
 
+function resolveSubscriberNextBillingDate(row: {
+  nextBillingDate: Date | null;
+  billingPolicy: unknown;
+  lastBillingDate: Date | null;
+  createdAt: Date;
+  status: ContractStatus;
+}): Date | null {
+  if (row.nextBillingDate) return row.nextBillingDate;
+  if (
+    row.status === ContractStatus.cancelled ||
+    row.status === ContractStatus.expired
+  ) {
+    return null;
+  }
+  const base = row.lastBillingDate ?? row.createdAt;
+  return computeNextBillingDateFromPolicy(row.billingPolicy, base);
+}
+
 function formatFrequency(policy: unknown): string {
   if (!policy || typeof policy !== 'object') return '—';
   const record = policy as Record<string, unknown>;
-  const interval = record.interval;
-  const unit = record.intervalUnit ?? record.unit ?? 'month';
-  if (interval == null) return '—';
-  return `Every ${interval} ${String(unit)}`;
+
+  let count: number | null = null;
+  let unit: string | null = null;
+
+  if (record.intervalCount != null) {
+    count = Number(record.intervalCount);
+    unit = String(
+      record.intervalUnit ?? record.interval ?? 'month',
+    ).toLowerCase();
+  } else if (typeof record.interval === 'number') {
+    count = record.interval;
+    unit = String(record.unit ?? record.intervalUnit ?? 'month').toLowerCase();
+  }
+
+  if (count == null || !Number.isFinite(count) || count <= 0 || !unit) {
+    return '—';
+  }
+
+  // Match admin filter labels (e.g. "Every 1 month", "Every 2 week").
+  return `Every ${count} ${unit}`;
 }
 
 export async function getSubscriberDetail(shopId: string, contractId: string) {
@@ -737,7 +779,7 @@ export async function getSubscriberDetail(shopId: string, contractId: string) {
     status: contract.status,
     healthStatus: contract.healthStatus,
     riskScore: contract.churnRiskScore ?? contract.predictedChurn30d ?? 0,
-    nextBillingDate: contract.nextBillingDate,
+    nextBillingDate: resolveSubscriberNextBillingDate(contract),
     totalRevenue: Number(contract.totalRevenue),
     createdAt: contract.createdAt,
     plan: contract.plan,

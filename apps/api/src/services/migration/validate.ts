@@ -55,7 +55,21 @@ export async function validateMigration(
     });
   }
 
+  const pendingRecords = records.filter(
+    (r) => r.status === MigrationRecordStatus.pending,
+  );
+  if (pendingRecords.length > 0) {
+    discrepancies.push({
+      code: 'SYNC_INCOMPLETE',
+      message: `${pendingRecords.length} records were never synced. Run Step 2 — Start sync and wait for it to finish before validating.`,
+      severity: 'error',
+    });
+  }
+
   for (const record of sourceContracts) {
+    if (record.status === MigrationRecordStatus.pending) {
+      continue;
+    }
     if (record.status !== MigrationRecordStatus.synced) {
       discrepancies.push({
         code: 'CONTRACT_NOT_SYNCED',

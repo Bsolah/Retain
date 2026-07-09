@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   evaluateStorefrontWidget,
+  extractReferencedSnippetFilenames,
   parseThemeFilesForNativeSellingPlans,
   parseThemeFilesForRetainBlock,
   parseThemeJson,
@@ -87,12 +88,41 @@ ${JSON.stringify({
   });
 });
 
+describe('extractReferencedSnippetFilenames', () => {
+  it('collects render/include targets from section liquid', () => {
+    expect(
+      extractReferencedSnippetFilenames([
+        "{% render 'product-variant-picker', product: product %}",
+        "{%- include 'price' -%}",
+      ]),
+    ).toEqual([
+      'snippets/product-variant-picker.liquid',
+      'snippets/price.liquid',
+    ]);
+  });
+});
+
 describe('parseThemeFilesForNativeSellingPlans', () => {
   it('detects Dawn-style selling plan markup in section liquid', () => {
     expect(
       parseThemeFilesForNativeSellingPlans([
         {
           filename: 'sections/main-product.liquid',
+          content: '{% for group in product.selling_plan_groups %}',
+        },
+      ]),
+    ).toBe(true);
+  });
+
+  it('detects selling_plan_groups in snippets referenced by sections', () => {
+    expect(
+      parseThemeFilesForNativeSellingPlans([
+        {
+          filename: 'sections/main-product.liquid',
+          content: "{% render 'product-variant-picker' %}",
+        },
+        {
+          filename: 'snippets/product-variant-picker.liquid',
           content: '{% for group in product.selling_plan_groups %}',
         },
       ]),
@@ -152,6 +182,21 @@ describe('evaluateStorefrontWidget', () => {
       {
         filename: 'sections/main-product.liquid',
         content: '<input name="selling_plan" type="hidden">',
+      },
+    ]);
+
+    expect(result).toEqual({ status: 'active', source: 'theme_native' });
+  });
+
+  it('marks themes active when selling_plan_groups only appears in a snippet', () => {
+    const result = evaluateStorefrontWidget([
+      {
+        filename: 'sections/main-product.liquid',
+        content: "{% render 'buy-buttons', product: product %}",
+      },
+      {
+        filename: 'snippets/buy-buttons.liquid',
+        content: '{% if product.selling_plan_groups.size > 0 %}',
       },
     ]);
 

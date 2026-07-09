@@ -5,10 +5,9 @@ import type {
   FrequencyUnit,
   PlanFrequency,
   PlanType,
-  PricingStrategy,
 } from '../types/plans';
 
-export type WizardStep = 0 | 1 | 2;
+export type WizardStep = 0 | 1;
 
 const defaultBoxConfig = (): BoxConfig => ({
   minItems: 3,
@@ -32,10 +31,6 @@ type PlanWizardState = {
   name: string;
   description: string;
   planType: PlanType;
-  pricingStrategy: PricingStrategy;
-  discountValue: number;
-  trialPeriodDays: number;
-  minimumCommitment: number | null;
   frequencies: PlanFrequency[];
   boxConfig: BoxConfig | null;
   productIds: string[];
@@ -49,10 +44,6 @@ type PlanWizardState = {
     name: string;
     description: string;
     planType: PlanType;
-    pricingStrategy: PricingStrategy;
-    discountValue: number;
-    trialPeriodDays: number;
-    minimumCommitment: number | null;
   }) => void;
   setBoxConfig: (patch: Partial<BoxConfig>) => void;
   addBoxSlot: () => void;
@@ -69,10 +60,6 @@ type PlanWizardState = {
     name: string;
     description?: string | null;
     planType: PlanType;
-    pricingStrategy: PricingStrategy;
-    discountValue?: number | null;
-    trialPeriodDays: number;
-    minimumCommitment?: number | null;
     frequencies: PlanFrequency[];
     boxConfig?: BoxConfig | null;
     productIds: string[];
@@ -84,10 +71,6 @@ type PlanWizardState = {
     description: string;
     planType: PlanType;
     frequencies: PlanFrequency[];
-    minimumCommitment: number | null;
-    trialPeriodDays: number;
-    pricingStrategy: PricingStrategy;
-    discountValue: number;
     boxConfig?: BoxConfig | null;
     productIds: string[];
     collectionIds: string[];
@@ -99,10 +82,6 @@ const initialState = {
   name: '',
   description: '',
   planType: 'standard' as PlanType,
-  pricingStrategy: 'percentage_discount' as PricingStrategy,
-  discountValue: 10,
-  trialPeriodDays: 0,
-  minimumCommitment: null as number | null,
   frequencies: [defaultFrequency('standard')],
   boxConfig: null as BoxConfig | null,
   productIds: [] as string[],
@@ -116,7 +95,7 @@ export const usePlanWizardStore = create<PlanWizardState>((set, get) => ({
   setStep: (step) => set({ step }),
   nextStep: () =>
     set((state) => ({
-      step: Math.min(2, state.step + 1) as WizardStep,
+      step: Math.min(1, state.step + 1) as WizardStep,
     })),
   prevStep: () =>
     set((state) => ({
@@ -287,10 +266,6 @@ export const usePlanWizardStore = create<PlanWizardState>((set, get) => ({
       name: plan.name,
       description: plan.description ?? '',
       planType: plan.planType,
-      pricingStrategy: plan.pricingStrategy,
-      discountValue: plan.discountValue ?? 10,
-      trialPeriodDays: plan.trialPeriodDays,
-      minimumCommitment: plan.minimumCommitment ?? null,
       frequencies:
         plan.frequencies.length > 0
           ? plan.frequencies
@@ -320,7 +295,7 @@ export const usePlanWizardStore = create<PlanWizardState>((set, get) => ({
       const row: PlanFrequency = {
         interval: frequency.interval,
         unit: frequency.unit,
-        discountPercent: frequency.discountPercent ?? state.discountValue,
+        discountPercent: frequency.discountPercent ?? 0,
       };
       if (state.planType === 'prepaid') {
         row.prepaidBillingInterval =
@@ -342,10 +317,6 @@ export const usePlanWizardStore = create<PlanWizardState>((set, get) => ({
       description: state.description,
       planType: state.planType,
       frequencies,
-      minimumCommitment: state.minimumCommitment,
-      trialPeriodDays: state.trialPeriodDays,
-      pricingStrategy: state.pricingStrategy,
-      discountValue: state.discountValue,
       boxConfig,
       productIds: state.productIds,
       collectionIds: state.collectionIds,

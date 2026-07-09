@@ -1,17 +1,18 @@
 {% comment %}
-  Retain purchase options — renders Shopify selling plans attached to this product.
-  Group name = Retain plan name; each frequency is one option within the group.
+  Retain purchase options — simple selector for all themes:
+  radio · plan name · delivery frequency (subtext) · price
+  One row per selling plan allocation (each frequency / plan).
 {% endcomment %}
 
-{%- assign current_variant = product.selected_or_first_available_variant -%}
-{%- assign product_form_id = 'product-form-' | append: section.id -%}
+{%- assign current_variant = product.selected_or_first_available_variant | default: product.variants.first -%}
+{%- assign retain_app_id = block.settings.retain_app_id | default: 'retain' -%}
 
 {% if product.selling_plan_groups.size > 0 %}
   <div
-    class="retain-purchase-options"
+    class="retain-purchase-options selling_plan_app_container"
     data-retain-purchase-options
     data-section-id="{{ section.id }}"
-    data-form-id="{{ product_form_id }}"
+    data-hide-native-selling-plans="true"
     {{ block.shopify_attributes }}
   >
     {% if block.settings.heading != blank %}
@@ -19,80 +20,138 @@
     {% endif %}
 
     {% for variant in product.variants %}
+      {% liquid
+        assign variant_price = variant.price | money | escape
+        assign variant_compare_at_price = variant.compare_at_price | money | escape
+      %}
+
       {% if variant.selling_plan_allocations.size > 0 %}
-        <div
-          class="retain-purchase-options__variant{% unless variant.id == current_variant.id %} retain-purchase-options--hidden{% endunless %}"
+        <section
           data-variant-id="{{ variant.id }}"
+          class="retain-purchase-options__variant selling_plan_theme_integration{% unless variant.id == current_variant.id %} selling_plan_theme_integration--hidden retain-purchase-options--hidden{% endunless %}"
         >
           <fieldset class="retain-purchase-options__fieldset">
             <legend class="retain-purchase-options__legend">
               {{ block.settings.heading | default: 'Purchase options' }}
             </legend>
 
-            {% unless product.requires_selling_plan %}
-              <label class="retain-purchase-options__option">
-                <input
-                  type="radio"
-                  name="retain_purchase_option_{{ section.id }}_{{ variant.id }}"
-                  value=""
-                  data-selling-plan-id=""
-                  checked
-                />
-                <span>{{ block.settings.one_time_label | default: 'One-time purchase' }}</span>
-              </label>
-            {% endunless %}
+            <ul class="retain-purchase-options__list">
+              {% unless product.requires_selling_plan %}
+                <li class="retain-purchase-options__item">
+                  <label class="retain-purchase-options__option">
+                    <input
+                      type="radio"
+                      name="purchaseOption_{{ section.id }}_{{ variant.id }}"
+                      data-radio-type="one_time_purchase"
+                      data-variant-id="{{ variant.id }}"
+                      data-variant-price="{{ variant_price }}"
+                      data-variant-compare-at-price="{{ variant_compare_at_price }}"
+                      {% if variant.available == false %}disabled{% endif %}
+                      checked
+                    />
+                    <span class="retain-purchase-options__copy">
+                      <span class="retain-purchase-options__label">
+                        {{ block.settings.one_time_label | default: 'One-time purchase' }}
+                      </span>
+                    </span>
+                    <span class="retain-purchase-options__price">{{ variant_price }}</span>
+                  </label>
+                </li>
+              {% endunless %}
 
-            {% for group in product.selling_plan_groups %}
-              {% assign group_plan_count = 0 %}
+              {% assign rendered_retain_plans = 0 %}
               {% for allocation in variant.selling_plan_allocations %}
-                {% if allocation.selling_plan_group_id == group.id %}
-                  {% assign group_plan_count = group_plan_count | plus: 1 %}
+                {% liquid
+                  assign group = product.selling_plan_groups | where: 'id', allocation.selling_plan_group_id | first
+                  assign show_plan = false
+                  if group != nil and group.app_id == retain_app_id
+                    assign show_plan = true
+                  endif
+                %}
+
+                {% if show_plan %}
+                  {% liquid
+                    if rendered_retain_plans == 0 and product.requires_selling_plan
+                      assign plan_checked = 'checked'
+                    else
+                      assign plan_checked = nil
+                    endif
+                    assign rendered_retain_plans = rendered_retain_plans | plus: 1
+
+                    assign allocation_price = allocation.price | money | escape
+                    assign allocation_compare_at_price = allocation.compare_at_price | money | escape
+                    assign plan_name = allocation.selling_plan.name
+                    assign plan_name_parts = plan_name | split: ' — '
+                    if plan_name_parts.size > 1
+                      assign option_label = plan_name_parts.first
+                    else
+                      assign option_label = group.name
+                    endif
+                  %}
+
+                  {%- assign delivery_frequency = '' -%}
+                  {%- for option in allocation.selling_plan.options -%}
+                    {%- assign delivery_frequency = option.value -%}
+                  {%- endfor -%}
+
+                  {% liquid
+                    if delivery_frequency == blank and plan_name_parts.size > 1
+                      assign delivery_frequency = plan_name_parts.last
+                    endif
+
+                    if delivery_frequency != blank
+                      assign delivery_label = 'Delivers every ' | append: delivery_frequency | downcase
+                    else
+                      assign delivery_label = ''
+                    endif
+                  %}
+
+                  <li class="retain-purchase-options__item" data-retain-plan-group>
+                    <label class="retain-purchase-options__option">
+                      <input
+                        type="radio"
+                        name="purchaseOption_{{ section.id }}_{{ variant.id }}"
+                        data-radio-type="selling_plan"
+                        data-selling-plan-id="{{ allocation.selling_plan.id }}"
+                        data-selling-plan-name="{{ allocation.selling_plan.name | escape }}"
+                        data-frequency="{{ delivery_frequency | escape }}"
+                        data-group-name="{{ group.name | escape }}"
+                        data-selling-plan-group-id="{{ section.id }}_{{ allocation.selling_plan_group_id }}_{{ variant.id }}"
+                        data-variant-price="{{ allocation_price }}"
+                        data-variant-compare-at-price="{{ allocation_compare_at_price }}"
+                        data-delivery-label="{{ delivery_label | escape }}"
+                        data-option-label="{{ option_label | escape }}"
+                        aria-label="{{ option_label }}{% if delivery_label != blank %}. {{ delivery_label }}{% endif %}. {{ allocation_price }}"
+                        {% if variant.available == false %}disabled{% endif %}
+                        {{ plan_checked }}
+                      />
+                      <span class="retain-purchase-options__copy">
+                        <span class="retain-purchase-options__label" data-retain-option-label>
+                          {{ option_label }}
+                        </span>
+                        {% if delivery_label != blank %}
+                          <span class="retain-purchase-options__subtext" data-retain-delivery-label>
+                            {{ delivery_label }}
+                          </span>
+                        {% endif %}
+                      </span>
+                      <span class="retain-purchase-options__price" data-retain-option-price>
+                        {{ allocation_price }}
+                      </span>
+                    </label>
+                  </li>
                 {% endif %}
               {% endfor %}
-
-              {% if group_plan_count > 0 %}
-                {% assign rendered_plan_ids = '' %}
-                {% for allocation in variant.selling_plan_allocations %}
-                  {% if allocation.selling_plan_group_id == group.id %}
-                    {% assign plan_id = allocation.selling_plan.id | append: '' %}
-                    {% assign plan_token = plan_id | prepend: ',' | append: ',' %}
-                    {% unless rendered_plan_ids contains plan_token %}
-                      {% assign rendered_plan_ids = rendered_plan_ids | append: plan_token %}
-
-                      {% if group_plan_count == 1 %}
-                        {% assign option_label = group.name %}
-                      {% else %}
-                        {% assign frequency_label = allocation.selling_plan.options.first
-                          | default: allocation.selling_plan.name %}
-                        {% assign option_label = group.name | append: ' — ' | append: frequency_label %}
-                      {% endif %}
-
-                      <label class="retain-purchase-options__option">
-                        <input
-                          type="radio"
-                          name="retain_purchase_option_{{ section.id }}_{{ variant.id }}"
-                          value="{{ allocation.selling_plan.id }}"
-                          data-selling-plan-id="{{ allocation.selling_plan.id }}"
-                          {% if product.requires_selling_plan and forloop.first %}checked{% endif %}
-                        />
-                        <span>{{ option_label }}</span>
-                        <span class="retain-purchase-options__price">{{ allocation.price | money }}</span>
-                      </label>
-                    {% endunless %}
-                  {% endif %}
-                {% endfor %}
-              {% endif %}
-            {% endfor %}
+            </ul>
           </fieldset>
-        </div>
+        </section>
       {% endif %}
     {% endfor %}
 
     <input
       type="hidden"
       name="selling_plan"
-      class="retain-selling-plan-input"
-      form="{{ product_form_id }}"
+      class="retain-selected-selling-plan-id selected-selling-plan-id"
       value=""
     />
   </div>
@@ -117,6 +176,13 @@
       "id": "one_time_label",
       "label": "One-time purchase label",
       "default": "One-time purchase"
+    },
+    {
+      "type": "text",
+      "id": "retain_app_id",
+      "label": "Retain app identifier",
+      "default": "retain",
+      "info": "Only selling plan groups created by Retain are shown. Do not change unless support asks you to."
     }
   ]
 }

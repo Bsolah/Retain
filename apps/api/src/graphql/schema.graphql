@@ -17,12 +17,6 @@ enum PlanType {
   box
 }
 
-enum PricingStrategy {
-  percentage_discount
-  fixed_price
-  tiered
-}
-
 enum FrequencyUnit {
   day
   week
@@ -82,10 +76,6 @@ type SubscriptionPlan {
   status: PlanStatus!
   planType: PlanType!
   frequencies: [PlanFrequency!]!
-  minimumCommitment: Int
-  trialPeriodDays: Int!
-  pricingStrategy: PricingStrategy!
-  discountValue: Float
   boxConfig: BoxConfig
   productIds: [ID!]!
   collectionIds: [ID!]!
@@ -100,10 +90,6 @@ input PlanInput {
   description: String
   planType: PlanType!
   frequencies: [PlanFrequencyInput!]!
-  minimumCommitment: Int
-  trialPeriodDays: Int
-  pricingStrategy: PricingStrategy!
-  discountValue: Float
   boxConfig: BoxConfigInput
   productIds: [ID!]
   collectionIds: [ID!]

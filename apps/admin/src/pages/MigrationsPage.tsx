@@ -130,6 +130,21 @@ export function MigrationsPage() {
       void queryClient.invalidateQueries({ queryKey: ['migrations'] }),
   });
 
+  const needsSync =
+    selected != null &&
+    (selected.status === 'discovered' ||
+      selected.status === 'failed' ||
+      (selected.validationReport != null &&
+        !selected.validationReport.passed &&
+        selected.validationReport.syncedContractCount <
+          selected.validationReport.sourceContractCount));
+
+  const canValidate =
+    selected != null &&
+    !needsSync &&
+    selected.status === 'validated' &&
+    (selected.progress?.total ?? 0) > 0;
+
   const validateMutation = useMutation({
     mutationFn: (migrationId: string) => validateMigration(migrationId),
     onSuccess: () =>
@@ -265,17 +280,18 @@ export function MigrationsPage() {
                   {progress.failed ?? 0} failed)
                 </Text>
                 <InlineStack gap="200">
-                  {selected.status === 'discovered' ? (
+                  {needsSync ? (
                     <Button
+                      variant="primary"
                       loading={syncMutation.isPending}
                       onClick={() => syncMutation.mutate(selected.id)}
                     >
-                      Step 2 — Start sync
+                      {selected.status === 'discovered'
+                        ? 'Step 2 — Start sync'
+                        : 'Retry sync'}
                     </Button>
                   ) : null}
-                  {['syncing', 'validated', 'discovered'].includes(
-                    selected.status,
-                  ) ? (
+                  {canValidate ? (
                     <Button
                       loading={validateMutation.isPending}
                       onClick={() => validateMutation.mutate(selected.id)}
@@ -301,6 +317,11 @@ export function MigrationsPage() {
                     </Button>
                   ) : null}
                 </InlineStack>
+                {syncMutation.isError ? (
+                  <Banner tone="critical">
+                    {(syncMutation.error as Error).message}
+                  </Banner>
+                ) : null}
                 <Checkbox
                   label="Cancel subscriptions on source platform at cutover"
                   checked={cancelSource}

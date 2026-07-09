@@ -22,7 +22,6 @@ export type BoxConfig = {
 };
 
 export type PlanType = 'standard' | 'prepaid' | 'box';
-export type PricingStrategy = 'percentage_discount' | 'fixed_price' | 'tiered';
 export type PlanStatus = 'active' | 'paused' | 'archived';
 
 export type SubscriptionPlan = {
@@ -34,10 +33,6 @@ export type SubscriptionPlan = {
   status: PlanStatus;
   planType: PlanType;
   frequencies: PlanFrequency[];
-  minimumCommitment?: number | null;
-  trialPeriodDays: number;
-  pricingStrategy: PricingStrategy;
-  discountValue?: number | null;
   boxConfig?: BoxConfig | null;
   productIds: string[];
   collectionIds: string[];
@@ -52,10 +47,6 @@ export type PlanInput = {
   description?: string | null;
   planType: PlanType;
   frequencies: PlanFrequency[];
-  minimumCommitment?: number | null;
-  trialPeriodDays?: number | null;
-  pricingStrategy: PricingStrategy;
-  discountValue?: number | null;
   boxConfig?: BoxConfig | null;
   productIds?: string[];
   collectionIds?: string[];

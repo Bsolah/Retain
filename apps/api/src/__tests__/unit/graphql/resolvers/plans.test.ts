@@ -13,8 +13,6 @@ const mockPlan = {
   description: 'Test plan',
   planType: 'standard',
   status: PlanStatus.active,
-  pricingStrategy: 'percentage_discount',
-  discountValue: 10,
   frequencies: [{ interval: 1, unit: 'month', discountPercent: 10 }],
   productIds: [],
   collectionIds: [],
@@ -106,6 +104,32 @@ describe('Plan GraphQL resolvers', () => {
       const gql = mapPlanToGql(mockPlan as never);
       expect(gql.name).toBe('Monthly Box');
       expect(gql.subscriberCount).toBeGreaterThanOrEqual(0);
+    });
+
+    it('sums subscription line item value for active contracts', () => {
+      const gql = mapPlanToGql({
+        ...mockPlan,
+        contracts: [
+          {
+            status: 'active',
+            totalRevenue: 0,
+            lineItems: [{ quantity: 1, unitPrice: 854.96 }],
+          },
+          {
+            status: 'active',
+            totalRevenue: 0,
+            lineItems: [{ quantity: 2, unitPrice: 50 }],
+          },
+          {
+            status: 'cancelled',
+            totalRevenue: 500,
+            lineItems: [{ quantity: 1, unitPrice: 100 }],
+          },
+        ],
+      } as never);
+
+      expect(gql.revenue).toBeCloseTo(954.96);
+      expect(gql.subscriberCount).toBe(2);
     });
   });
 });

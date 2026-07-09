@@ -3,7 +3,6 @@ import {
   HealthStatus,
   PlanStatus,
   PlanType,
-  PricingStrategy,
   prisma,
 } from '@retain/database';
 import {
@@ -64,8 +63,6 @@ export async function seedTestData(): Promise<TestDataset> {
       description: 'Test monthly plan',
       planType: PlanType.standard,
       status: PlanStatus.active,
-      pricingStrategy: PricingStrategy.percentage_discount,
-      discountValue: 10,
       frequencies: [{ interval: 1, unit: 'month', discountPercent: 10 }],
       productIds: ['gid://shopify/Product/1'],
       collectionIds: [],
@@ -80,8 +77,6 @@ export async function seedTestData(): Promise<TestDataset> {
       description: 'Test quarterly plan',
       planType: PlanType.box,
       status: PlanStatus.active,
-      pricingStrategy: PricingStrategy.percentage_discount,
-      discountValue: 15,
       frequencies: [{ interval: 3, unit: 'month', discountPercent: 15 }],
       productIds: [],
       collectionIds: ['gid://shopify/Collection/1'],

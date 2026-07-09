@@ -2,6 +2,7 @@ import type {
   Shop,
   SubscriptionPlan as DbSubscriptionPlan,
 } from '@retain/database';
+import { RETAIN_SELLING_PLAN_APP_ID } from '@retain/shopify-admin';
 import { ShopifyClientError, shopifyAdminGraphql } from './shopify-client.js';
 import type { ValidatedFrequency } from './plan-validation.js';
 
@@ -26,8 +27,6 @@ export type SellingPlanCreateInput = {
   frequencies: ValidatedFrequency[];
   productIds: string[];
   collectionIds: string[];
-  pricingStrategy: string;
-  discountValue?: number | null;
 };
 
 /** Build Shopify sync input from a Retain subscription plan row. */
@@ -40,8 +39,6 @@ export function sellingPlanInputFromRecord(
     | 'frequencies'
     | 'productIds'
     | 'collectionIds'
-    | 'pricingStrategy'
-    | 'discountValue'
   >,
   frequencies: ValidatedFrequency[],
 ): SellingPlanCreateInput {
@@ -52,9 +49,6 @@ export function sellingPlanInputFromRecord(
     frequencies,
     productIds: plan.productIds,
     collectionIds: plan.collectionIds,
-    pricingStrategy: plan.pricingStrategy,
-    discountValue:
-      plan.discountValue == null ? null : Number(plan.discountValue),
   };
 }
 
@@ -79,39 +73,28 @@ function buildSellingPlans(
   input: SellingPlanCreateInput,
 ): Array<Record<string, unknown>> {
   const isPrepaid = input.planType === 'prepaid';
+  const seenOptions = new Set<string>();
 
-  return input.frequencies.map((frequency) => {
+  return input.frequencies.map((frequency, index) => {
     const interval = INTERVAL_MAP[frequency.unit];
-    const discountPercent =
-      frequency.discountPercent ??
-      (input.pricingStrategy === 'percentage_discount'
-        ? (input.discountValue ?? 0)
-        : 0);
+    const discountPercent = frequency.discountPercent ?? 0;
 
-    const pricingPolicies =
-      input.pricingStrategy === 'fixed_price' && input.discountValue != null
-        ? [
-            {
-              fixed: {
-                adjustmentType: 'PRICE',
-                adjustmentValue: {
-                  fixedValue: input.discountValue,
-                },
-              },
-            },
-          ]
-        : [
-            {
-              fixed: {
-                adjustmentType: 'PERCENTAGE',
-                adjustmentValue: {
-                  percentage: discountPercent,
-                },
-              },
-            },
-          ];
+    const pricingPolicies = [
+      {
+        fixed: {
+          adjustmentType: 'PERCENTAGE',
+          adjustmentValue: {
+            percentage: discountPercent,
+          },
+        },
+      },
+    ];
 
-    const deliveryLabel = optionValue(frequency);
+    let deliveryLabel = optionValue(frequency);
+    if (seenOptions.has(deliveryLabel)) {
+      deliveryLabel = `${deliveryLabel} (${index + 1})`;
+    }
+    seenOptions.add(deliveryLabel);
     const billingCount = isPrepaid
       ? (frequency.prepaidBillingInterval ?? frequency.interval)
       : frequency.interval;
@@ -142,6 +125,15 @@ function buildSellingPlans(
       pricingPolicies,
     };
   });
+}
+
+function isBenignResourceTakenError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('already been taken') ||
+    normalized.includes('already taken') ||
+    normalized.includes('resource has already been taken')
+  );
 }
 
 function formatShopifyError(error: unknown): string {
@@ -275,10 +267,29 @@ const ADD_PRODUCTS_MUTATION = `#graphql
   }
 `;
 
+const REMOVE_PRODUCTS_MUTATION = `#graphql
+  mutation SellingPlanGroupRemoveProducts($id: ID!, $productIds: [ID!]!) {
+    sellingPlanGroupRemoveProducts(id: $id, productIds: $productIds) {
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
 const GROUP_PLANS_QUERY = `#graphql
   query SellingPlanGroupPlans($id: ID!) {
     sellingPlanGroup(id: $id) {
+      name
       sellingPlans(first: 50) {
+        nodes {
+          id
+          name
+          options
+        }
+      }
+      products(first: 250) {
         nodes {
           id
         }
@@ -286,6 +297,67 @@ const GROUP_PLANS_QUERY = `#graphql
     }
   }
 `;
+
+type ShopifySellingPlanSnapshot = {
+  name: string;
+  options: string[];
+};
+
+type SellingPlanGroupState = {
+  name: string;
+  sellingPlans: ShopifySellingPlanSnapshot[];
+  productIds: string[];
+};
+
+function sellingPlanSignature(
+  plans: Array<{ name: string; options: string[] }>,
+): string {
+  return plans
+    .map((plan) => `${plan.name}::${[...plan.options].sort().join(',')}`)
+    .sort()
+    .join('|');
+}
+
+/** True when Shopify selling plans do not match what Retain would create. */
+export function shopifySellingPlansDrift(
+  shopifyPlans: ShopifySellingPlanSnapshot[],
+  input: SellingPlanCreateInput,
+): boolean {
+  const expected = buildSellingPlans(input).map((plan) => ({
+    name: String(plan.name),
+    options: (plan.options as string[]) ?? [],
+  }));
+
+  if (shopifyPlans.length !== expected.length) return true;
+  return sellingPlanSignature(shopifyPlans) !== sellingPlanSignature(expected);
+}
+
+async function fetchSellingPlanGroupState(
+  shop: Shop,
+  groupId: string,
+): Promise<SellingPlanGroupState | null> {
+  const data = await shopifyAdminGraphql<{
+    sellingPlanGroup: {
+      name: string;
+      sellingPlans: {
+        nodes: Array<{ id: string; name: string; options: string[] }>;
+      };
+      products: { nodes: Array<{ id: string }> };
+    } | null;
+  }>(shop, GROUP_PLANS_QUERY, { id: groupId });
+
+  const group = data.sellingPlanGroup;
+  if (!group) return null;
+
+  return {
+    name: group.name,
+    sellingPlans: group.sellingPlans.nodes.map((plan) => ({
+      name: plan.name,
+      options: plan.options,
+    })),
+    productIds: group.products.nodes.map((product) => product.id),
+  };
+}
 
 export async function fetchSellingPlanIdsForGroup(
   shop: Shop,
@@ -295,7 +367,19 @@ export async function fetchSellingPlanIdsForGroup(
     sellingPlanGroup: {
       sellingPlans: { nodes: Array<{ id: string }> };
     } | null;
-  }>(shop, GROUP_PLANS_QUERY, { id: groupId });
+  }>(
+    shop,
+    `#graphql
+      query SellingPlanGroupPlanIds($id: ID!) {
+        sellingPlanGroup(id: $id) {
+          sellingPlans(first: 50) {
+            nodes { id }
+          }
+        }
+      }
+    `,
+    { id: groupId },
+  );
 
   return data.sellingPlanGroup?.sellingPlans.nodes.map((plan) => plan.id) ?? [];
 }
@@ -307,6 +391,7 @@ export function buildSellingPlanReplaceInput(
 ): Record<string, unknown> {
   return {
     name: input.name,
+    appId: RETAIN_SELLING_PLAN_APP_ID,
     options: ['Delivery every'],
     sellingPlansToDelete: existingPlanIds,
     sellingPlansToCreate: buildSellingPlans(input),
@@ -340,6 +425,7 @@ export async function createSellingPlanGroup(
       input: {
         name: input.name,
         merchantCode,
+        appId: RETAIN_SELLING_PLAN_APP_ID,
         options: ['Delivery every'],
         sellingPlansToCreate: buildSellingPlans(input),
       },
@@ -371,49 +457,267 @@ export async function createSellingPlanGroup(
   }
 }
 
-export async function updateSellingPlanGroup(
+export type SellingPlanUpdateOptions = {
+  /** Previous Retain state — used to diff products and skip selling-plan replace. */
+  previous?: SellingPlanCreateInput;
+};
+
+function frequencySignature(frequency: ValidatedFrequency): string {
+  return JSON.stringify({
+    interval: frequency.interval,
+    unit: frequency.unit,
+    discountPercent: frequency.discountPercent ?? null,
+    prepaidBillingInterval: frequency.prepaidBillingInterval ?? null,
+  });
+}
+
+/** True when Shopify selling plans must be deleted and recreated. */
+export function sellingPlansNeedReplace(
+  previous: SellingPlanCreateInput,
+  next: SellingPlanCreateInput,
+): boolean {
+  if (previous.name !== next.name) return true;
+  if (previous.planType !== next.planType) return true;
+
+  const prev = previous.frequencies.map(frequencySignature).sort();
+  const updated = next.frequencies.map(frequencySignature).sort();
+  return prev.join('|') !== updated.join('|');
+}
+
+function filterBlockingUserErrors(
+  errors: Array<{ message: string }>,
+): Array<{ message: string }> {
+  return errors.filter((error) => !isBenignResourceTakenError(error.message));
+}
+
+async function syncSellingPlanGroupProducts(
+  shop: Shop,
+  groupId: string,
+  input: SellingPlanCreateInput,
+  previous?: SellingPlanCreateInput,
+): Promise<void> {
+  const nextProductIds = await resolveResourceProductIds(shop, input);
+  if (nextProductIds.length === 0) {
+    throw new Error(
+      'No products to attach. Select products or collections that contain products.',
+    );
+  }
+
+  const previousProductIds = previous
+    ? await resolveResourceProductIds(shop, previous)
+    : [];
+
+  const toAdd = previous
+    ? nextProductIds.filter((id) => !previousProductIds.includes(id))
+    : nextProductIds;
+  const toRemove = previous
+    ? previousProductIds.filter((id) => !nextProductIds.includes(id))
+    : [];
+
+  if (toRemove.length > 0) {
+    const removeResult = await shopifyAdminGraphql<{
+      sellingPlanGroupRemoveProducts: {
+        userErrors: Array<{ message: string }>;
+      };
+    }>(shop, REMOVE_PRODUCTS_MUTATION, { id: groupId, productIds: toRemove });
+
+    const blockingErrors = filterBlockingUserErrors(
+      removeResult.sellingPlanGroupRemoveProducts.userErrors,
+    );
+    if (blockingErrors.length > 0) {
+      throw new Error(blockingErrors.map((error) => error.message).join('; '));
+    }
+  }
+
+  if (toAdd.length > 0) {
+    const addResult = await shopifyAdminGraphql<{
+      sellingPlanGroupAddProducts: {
+        userErrors: Array<{ message: string }>;
+      };
+    }>(shop, ADD_PRODUCTS_MUTATION, { id: groupId, productIds: toAdd });
+
+    const blockingErrors = filterBlockingUserErrors(
+      addResult.sellingPlanGroupAddProducts.userErrors,
+    );
+    if (blockingErrors.length > 0) {
+      throw new Error(blockingErrors.map((error) => error.message).join('; '));
+    }
+  }
+}
+
+async function replaceSellingPlansInGroup(
   shop: Shop,
   groupId: string,
   input: SellingPlanCreateInput,
 ): Promise<void> {
-  try {
-    const existingPlanIds = await fetchSellingPlanIdsForGroup(shop, groupId);
+  const existingPlanIds = await fetchSellingPlanIdsForGroup(shop, groupId);
+  const updateInput = buildSellingPlanReplaceInput(input, existingPlanIds);
 
-    const data = await shopifyAdminGraphql<{
+  const result = await shopifyAdminGraphql<{
+    sellingPlanGroupUpdate: {
+      sellingPlanGroup: { id: string } | null;
+      userErrors: Array<{ message: string }>;
+    };
+  }>(shop, UPDATE_MUTATION, {
+    id: groupId,
+    input: updateInput,
+  });
+
+  if (result.sellingPlanGroupUpdate.userErrors.length > 0) {
+    throw new Error(
+      result.sellingPlanGroupUpdate.userErrors
+        .map((error) => error.message)
+        .join('; '),
+    );
+  }
+}
+
+export async function updateSellingPlanGroup(
+  shop: Shop,
+  groupId: string,
+  input: SellingPlanCreateInput,
+  options?: SellingPlanUpdateOptions,
+): Promise<void> {
+  try {
+    const previous = options?.previous;
+    const shouldReplacePlans =
+      !previous || sellingPlansNeedReplace(previous, input);
+
+    if (shouldReplacePlans) {
+      await replaceSellingPlansInGroup(shop, groupId, input);
+      await syncSellingPlanGroupProducts(shop, groupId, input, previous);
+      await stampRetainAppId(shop, groupId);
+      return;
+    }
+
+    const nameResult = await shopifyAdminGraphql<{
       sellingPlanGroupUpdate: {
-        sellingPlanGroup: { id: string } | null;
         userErrors: Array<{ message: string }>;
       };
     }>(shop, UPDATE_MUTATION, {
       id: groupId,
-      input: buildSellingPlanReplaceInput(input, existingPlanIds),
+      input: {
+        name: input.name,
+        options: ['Delivery every'],
+        appId: RETAIN_SELLING_PLAN_APP_ID,
+      },
     });
 
-    if (data.sellingPlanGroupUpdate.userErrors.length > 0) {
+    if (nameResult.sellingPlanGroupUpdate.userErrors.length > 0) {
       throw new Error(
-        data.sellingPlanGroupUpdate.userErrors
+        nameResult.sellingPlanGroupUpdate.userErrors
           .map((error) => error.message)
           .join('; '),
       );
     }
 
-    // Attach any newly selected products (collections expanded to products).
-    const productIds = await resolveResourceProductIds(shop, input);
-    if (productIds.length > 0) {
-      const addResult = await shopifyAdminGraphql<{
-        sellingPlanGroupAddProducts: {
-          userErrors: Array<{ message: string }>;
-        };
-      }>(shop, ADD_PRODUCTS_MUTATION, { id: groupId, productIds });
+    await syncSellingPlanGroupProducts(shop, groupId, input, previous);
+    await stampRetainAppId(shop, groupId);
+  } catch (error) {
+    throw new Error(formatShopifyError(error));
+  }
+}
 
-      if (addResult.sellingPlanGroupAddProducts.userErrors.length > 0) {
-        throw new Error(
-          addResult.sellingPlanGroupAddProducts.userErrors
-            .map((error) => error.message)
-            .join('; '),
-        );
-      }
+async function stampRetainAppId(shop: Shop, groupId: string): Promise<void> {
+  const result = await shopifyAdminGraphql<{
+    sellingPlanGroupUpdate: {
+      userErrors: Array<{ message: string }>;
+    };
+  }>(shop, UPDATE_MUTATION, {
+    id: groupId,
+    input: {
+      appId: RETAIN_SELLING_PLAN_APP_ID,
+    },
+  });
+
+  const blockingErrors = filterBlockingUserErrors(
+    result.sellingPlanGroupUpdate.userErrors,
+  );
+  if (blockingErrors.length > 0) {
+    throw new Error(blockingErrors.map((error) => error.message).join('; '));
+  }
+}
+
+async function syncProductsToMatchShopifyState(
+  shop: Shop,
+  groupId: string,
+  input: SellingPlanCreateInput,
+  currentShopifyProductIds: string[],
+): Promise<void> {
+  const targetProductIds = await resolveResourceProductIds(shop, input);
+  if (targetProductIds.length === 0) {
+    throw new Error(
+      'No products to attach. Select products or collections that contain products.',
+    );
+  }
+
+  const toAdd = targetProductIds.filter(
+    (id) => !currentShopifyProductIds.includes(id),
+  );
+  const toRemove = currentShopifyProductIds.filter(
+    (id) => !targetProductIds.includes(id),
+  );
+
+  if (toRemove.length > 0) {
+    const removeResult = await shopifyAdminGraphql<{
+      sellingPlanGroupRemoveProducts: {
+        userErrors: Array<{ message: string }>;
+      };
+    }>(shop, REMOVE_PRODUCTS_MUTATION, { id: groupId, productIds: toRemove });
+
+    const blockingErrors = filterBlockingUserErrors(
+      removeResult.sellingPlanGroupRemoveProducts.userErrors,
+    );
+    if (blockingErrors.length > 0) {
+      throw new Error(blockingErrors.map((error) => error.message).join('; '));
     }
+  }
+
+  if (toAdd.length > 0) {
+    const addResult = await shopifyAdminGraphql<{
+      sellingPlanGroupAddProducts: {
+        userErrors: Array<{ message: string }>;
+      };
+    }>(shop, ADD_PRODUCTS_MUTATION, { id: groupId, productIds: toAdd });
+
+    const blockingErrors = filterBlockingUserErrors(
+      addResult.sellingPlanGroupAddProducts.userErrors,
+    );
+    if (blockingErrors.length > 0) {
+      throw new Error(blockingErrors.map((error) => error.message).join('; '));
+    }
+  }
+}
+
+/**
+ * Repair sync: compare live Shopify state to Retain and only replace selling
+ * plans when the storefront has drifted.
+ */
+export async function resyncSellingPlanGroup(
+  shop: Shop,
+  groupId: string,
+  input: SellingPlanCreateInput,
+): Promise<void> {
+  try {
+    const state = await fetchSellingPlanGroupState(shop, groupId);
+    if (!state) {
+      throw new Error('Selling plan group not found in Shopify');
+    }
+
+    const plansDrifted = shopifySellingPlansDrift(state.sellingPlans, input);
+    const groupNameChanged = state.name !== input.name;
+
+    if (plansDrifted || groupNameChanged) {
+      await replaceSellingPlansInGroup(shop, groupId, input);
+    }
+
+    await syncProductsToMatchShopifyState(
+      shop,
+      groupId,
+      input,
+      state.productIds,
+    );
+    await stampRetainAppId(shop, groupId);
   } catch (error) {
     throw new Error(formatShopifyError(error));
   }

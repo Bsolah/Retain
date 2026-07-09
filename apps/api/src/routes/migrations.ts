@@ -7,10 +7,7 @@ import {
   createSessionPreHandler,
   type AuthenticatedRequest,
 } from '../middleware/session.js';
-import {
-  enqueueMigrationCutover,
-  enqueueMigrationSync,
-} from '../lib/migration-queues.js';
+import { enqueueMigrationCutover } from '../lib/migration-queues.js';
 import {
   discoverMigration,
   getMigration,
@@ -19,7 +16,10 @@ import {
 } from '../services/migration/discover.js';
 import { runMigrationRollback } from '../services/migration/cutover.js';
 import { getMigrationProgress } from '../services/migration/progress.js';
-import { retryMigrationRecord } from '../services/migration/sync.js';
+import {
+  retryMigrationRecord,
+  runMigrationSync,
+} from '../services/migration/sync.js';
 import { validateMigration } from '../services/migration/validate.js';
 import { prisma } from '@retain/database';
 
@@ -87,12 +87,25 @@ export async function registerMigrationRoutes(
       return reply.status(404).send({ message: 'Migration not found' });
     }
 
-    await enqueueMigrationSync({
-      migrationId: migration.id,
-      shopId: req.shop!.id,
-    });
-
-    return { ok: true, migrationId: migration.id, status: 'syncing' };
+    try {
+      await runMigrationSync(req.shop!, migration.id);
+      const updated = await getMigration(req.shop!.id, migration.id);
+      return {
+        ok: true,
+        migrationId: migration.id,
+        status: updated?.status ?? migration.status,
+        progress: updated?.progress ?? {},
+      };
+    } catch (error) {
+      request.log.error(
+        { err: error, migrationId: migration.id },
+        'Migration sync failed',
+      );
+      return reply.status(500).send({
+        message:
+          error instanceof Error ? error.message : 'Migration sync failed',
+      });
+    }
   });
 
   app.get<{ Params: { id: string } }>(

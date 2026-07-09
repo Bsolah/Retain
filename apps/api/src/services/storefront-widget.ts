@@ -26,6 +26,19 @@ const COMMON_PRODUCT_SECTIONS = [
   'sections/product-information.liquid',
 ] as const;
 
+/** Snippets themes often use for native subscription / selling-plan UI (e.g. Dawn). */
+const COMMON_SUBSCRIPTION_SNIPPETS = [
+  'snippets/product-variant-picker.liquid',
+  'snippets/buy-buttons.liquid',
+  'snippets/selling-plan.liquid',
+  'snippets/subscription-picker.liquid',
+  'snippets/price.liquid',
+] as const;
+
+const EXTRA_PRODUCT_TEMPLATE_FILES = ['templates/product.liquid'] as const;
+
+const RENDER_SNIPPET_PATTERN = /\{%-?\s*(?:render|include)\s+['"]([^'"]+)['"]/g;
+
 const THEME_FILES_QUERY = `#graphql
   query RetainThemeWidgetFiles($filenames: [String!]!) {
     themes(first: 1, roles: [MAIN]) {
@@ -71,6 +84,25 @@ export function parseThemeJson(
   } catch {
     return null;
   }
+}
+
+export function extractReferencedSnippetFilenames(
+  liquidContents: Array<string | null | undefined>,
+): string[] {
+  const names = new Set<string>();
+
+  for (const content of liquidContents) {
+    if (!content) continue;
+
+    for (const match of content.matchAll(RENDER_SNIPPET_PATTERN)) {
+      const name = match[1];
+      if (name && !name.includes('/')) {
+        names.add(`snippets/${name}.liquid`);
+      }
+    }
+  }
+
+  return [...names];
 }
 
 export function sectionTypesFromProductTemplate(parsed: unknown): string[] {
@@ -160,7 +192,6 @@ export function parseThemeFilesForNativeSellingPlans(
     }
 
     if (
-      file.filename.startsWith('sections/') &&
       file.filename.endsWith('.liquid') &&
       liquidHasSellingPlanPicker(file.content)
     ) {
@@ -232,6 +263,18 @@ function sectionFilenamesFromTypes(types: string[]): string[] {
   return types.map((type) => `sections/${type}.liquid`);
 }
 
+function uniqueFilenames(filenames: string[]): string[] {
+  return [...new Set(filenames)];
+}
+
+function filenamesNotIn(
+  candidates: string[],
+  existing: Array<{ filename: string }>,
+): string[] {
+  const have = new Set(existing.map((file) => file.filename));
+  return uniqueFilenames(candidates).filter((name) => !have.has(name));
+}
+
 async function fetchThemeFiles(
   shop: Shop,
   filenames: string[],
@@ -266,7 +309,11 @@ export async function getStorefrontWidgetInfo(
   const deepLinkUrl = buildThemeEditorDeepLink(shop.shopifyDomain);
 
   try {
-    const baseFiles = await fetchThemeFiles(shop, [...BASE_THEME_FILES]);
+    const baseFiles = await fetchThemeFiles(shop, [
+      ...BASE_THEME_FILES,
+      ...EXTRA_PRODUCT_TEMPLATE_FILES,
+      ...COMMON_SUBSCRIPTION_SNIPPETS,
+    ]);
     const themeMeta = await shopifyAdminGraphql<{
       themes: { nodes: Array<{ name: string }> };
     }>(
@@ -301,7 +348,19 @@ export async function getStorefrontWidgetInfo(
         ? await fetchThemeFiles(shop, sectionFilenames)
         : [];
 
-    const allFiles = [...baseFiles, ...sectionFiles];
+    const liquidSoFar = [...baseFiles, ...sectionFiles];
+    const referencedSnippets = extractReferencedSnippetFilenames(
+      liquidSoFar.map((file) => file.content),
+    );
+    const snippetFiles =
+      referencedSnippets.length > 0
+        ? await fetchThemeFiles(
+            shop,
+            filenamesNotIn(referencedSnippets, liquidSoFar),
+          )
+        : [];
+
+    const allFiles = [...liquidSoFar, ...snippetFiles];
     const evaluation = evaluateStorefrontWidget(allFiles);
 
     return {

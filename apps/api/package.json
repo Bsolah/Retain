@@ -27,6 +27,7 @@
     "@fastify/rate-limit": "^9.1.0",
     "@retain/database": "workspace:*",
     "@retain/shared": "workspace:*",
+    "@retain/shopify-admin": "workspace:*",
     "@types/handlebars": "^4.1.0",
     "bullmq": "^5.13.0",
     "envalid": "^8.0.0",

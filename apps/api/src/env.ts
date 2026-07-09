@@ -47,6 +47,10 @@ export const env = cleanEnv(process.env, {
   SENDGRID_API_KEY: str({ default: '' }),
   SENDGRID_FROM_EMAIL: str({ default: 'noreply@retain.app' }),
   SENDGRID_FROM_NAME: str({ default: 'Retain' }),
+  /** Inbox for merchant support requests from the embedded admin app. */
+  SUPPORT_INBOX_EMAIL: str({ default: '' }),
+  /** Optional calendar link shown on the Support page (e.g. Calendly). */
+  SUPPORT_BOOKING_URL: str({ default: '' }),
   TWILIO_ACCOUNT_SID: str({ default: '' }),
   TWILIO_AUTH_TOKEN: str({ default: '' }),
   TWILIO_FROM_NUMBER: str({ default: '' }),

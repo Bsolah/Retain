@@ -54,19 +54,6 @@ async function loadContract(
   return contract;
 }
 
-function assertMinimumCommitment(
-  contract: SubscriptionContract & { plan: SubscriptionPlan },
-  merchantOverride?: boolean | null,
-): void {
-  if (merchantOverride) return;
-  const minimum = contract.plan.minimumCommitment;
-  if (minimum != null && contract.totalCharges < minimum) {
-    throw userInputError(
-      `Cannot cancel before minimum commitment of ${minimum} billing cycles (completed ${contract.totalCharges})`,
-    );
-  }
-}
-
 function validateBoxItems(plan: SubscriptionPlan, items: BoxItem[]): void {
   const config = asBoxConfig(plan.boxConfig);
   if (plan.planType !== 'box' && items.length === 0) {
@@ -172,7 +159,6 @@ export async function cancelContract(options: {
   merchantOverride?: boolean;
 }): Promise<SubscriptionContract> {
   const contract = await loadContract(options.id);
-  assertMinimumCommitment(contract, options.merchantOverride);
 
   const updated = await prisma.subscriptionContract.update({
     where: { id: contract.id },

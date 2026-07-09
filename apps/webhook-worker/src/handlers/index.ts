@@ -25,44 +25,15 @@ import { runChurnAnalysis } from '../services/churn.js';
 import { scheduleShopCleanup } from '../services/cleanup-queue.js';
 import { triggerDunningWorkflow } from '../services/dunning.js';
 import { upsertProductCache } from '../services/product-cache.js';
-
-type JsonRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): JsonRecord {
-  return value && typeof value === 'object' ? (value as JsonRecord) : {};
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-function parseDate(value: unknown): Date | null {
-  if (!value) return null;
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? null : date;
-}
+import {
+  computeNextBillingDateFromPolicy,
+  upsertContractFromWebhook,
+  syncContractsFromOrderWebhook,
+} from '@retain/shopify-admin';
 
 function toGid(resource: string, id: string): string {
   if (id.startsWith('gid://')) return id;
   return `gid://shopify/${resource}/${id}`;
-}
-
-function mapContractStatus(status: string | null | undefined): ContractStatus {
-  const normalized = (status ?? 'active').toLowerCase().replace(/-/g, '_');
-  switch (normalized) {
-    case 'paused':
-      return ContractStatus.paused;
-    case 'cancelled':
-    case 'canceled':
-      return ContractStatus.cancelled;
-    case 'expired':
-      return ContractStatus.expired;
-    case 'failed':
-    case 'payment_failed':
-      return ContractStatus.payment_failed;
-    default:
-      return ContractStatus.active;
-  }
 }
 
 async function getShop(shopDomain: string): Promise<Shop> {
@@ -71,55 +42,6 @@ async function getShop(shopDomain: string): Promise<Shop> {
   });
   if (!shop) throw new Error(`Shop not found: ${shopDomain}`);
   return shop;
-}
-
-async function ensureCustomer(
-  shop: Shop,
-  payload: JsonRecord,
-): Promise<string> {
-  const customerNode = asRecord(payload.customer);
-  const shopifyCustomerId =
-    asString(customerNode.admin_graphql_api_id) ??
-    asString(customerNode.id) ??
-    (payload.customer_id != null
-      ? toGid('Customer', String(payload.customer_id))
-      : null);
-
-  if (!shopifyCustomerId) throw new Error('Missing customer id');
-
-  const gid = shopifyCustomerId.startsWith('gid://')
-    ? shopifyCustomerId
-    : toGid('Customer', shopifyCustomerId);
-
-  const existing = await prisma.customer.findUnique({
-    where: {
-      shopId_shopifyCustomerId: { shopId: shop.id, shopifyCustomerId: gid },
-    },
-  });
-  if (existing) return existing.id;
-
-  const created = await prisma.customer.create({
-    data: {
-      shopId: shop.id,
-      shopifyCustomerId: gid,
-      email: asString(customerNode.email) ?? 'unknown@customer.local',
-      firstName: asString(customerNode.first_name),
-      lastName: asString(customerNode.last_name),
-      phone: asString(customerNode.phone),
-      totalSubscriptions: 1,
-      activeSubscriptions: 1,
-    },
-  });
-  return created.id;
-}
-
-async function resolvePlanId(shop: Shop): Promise<string> {
-  const plan = await prisma.subscriptionPlan.findFirst({
-    where: { shopId: shop.id, status: 'active' },
-    orderBy: { createdAt: 'asc' },
-  });
-  if (!plan) throw new Error('No active plan for shop');
-  return plan.id;
 }
 
 function mapHealthStatus(riskLevel: string | undefined): HealthStatus {
@@ -158,63 +80,13 @@ async function findContractByShopifyId(shopId: string, rawId: unknown) {
 }
 
 export async function handleContractCreate(job: ShopifyWebhookJob) {
-  const payload = contractWebhookSchema.parse(job.payload);
-  const shop = await getShop(job.shopDomain);
-  const shopifyContractId =
-    payload.admin_graphql_api_id ??
-    (payload.id != null
-      ? toGid('SubscriptionContract', String(payload.id))
-      : null);
-  if (!shopifyContractId) throw new Error('Missing contract id');
-
-  const existing = await prisma.subscriptionContract.findUnique({
-    where: {
-      shopId_shopifyContractId: { shopId: shop.id, shopifyContractId },
-    },
+  contractWebhookSchema.parse(job.payload);
+  const contract = await upsertContractFromWebhook({
+    shopDomain: job.shopDomain,
+    topic: job.topic,
+    payload: job.payload,
+    webhookId: job.webhookId,
   });
-
-  const customerId = await ensureCustomer(shop, payload as JsonRecord);
-  const planId = await resolvePlanId(shop);
-
-  const contract = await prisma.subscriptionContract.upsert({
-    where: {
-      shopId_shopifyContractId: { shopId: shop.id, shopifyContractId },
-    },
-    create: {
-      shopId: shop.id,
-      customerId,
-      planId,
-      shopifyContractId,
-      status: mapContractStatus(payload.status),
-      billingPolicy: (payload.billing_policy ?? {}) as object,
-      deliveryPolicy: (payload.delivery_policy ?? {}) as object,
-      pricingPolicy: (payload.pricing_policy ?? {}) as object,
-      nextBillingDate: parseDate(payload.next_billing_date),
-    },
-    update: {
-      customerId,
-      planId,
-      status: mapContractStatus(payload.status),
-      billingPolicy: (payload.billing_policy ?? {}) as object,
-      deliveryPolicy: (payload.delivery_policy ?? {}) as object,
-      pricingPolicy: (payload.pricing_policy ?? {}) as object,
-      nextBillingDate: parseDate(payload.next_billing_date),
-    },
-  });
-
-  if (!existing) {
-    await updateCustomerSubscriptionCounts(customerId, { total: 1, active: 1 });
-  }
-
-  await logEvent({
-    shopId: shop.id,
-    contractId: contract.id,
-    eventType: 'contract.created',
-    eventSubtype: job.topic,
-    payload: { webhookId: job.webhookId },
-    source: EventSource.webhook,
-  });
-
   return { contractId: contract.id };
 }
 
@@ -234,33 +106,14 @@ export async function handleContractUpdate(job: ShopifyWebhookJob) {
     },
   });
 
-  const nextStatus = mapContractStatus(payload.status);
-  const contract = await prisma.subscriptionContract.upsert({
-    where: {
-      shopId_shopifyContractId: { shopId: shop.id, shopifyContractId },
-    },
-    create: {
-      shopId: shop.id,
-      customerId: await ensureCustomer(shop, payload as JsonRecord),
-      planId: await resolvePlanId(shop),
-      shopifyContractId,
-      status: nextStatus,
-      billingPolicy: (payload.billing_policy ?? {}) as object,
-      deliveryPolicy: (payload.delivery_policy ?? {}) as object,
-      pricingPolicy: (payload.pricing_policy ?? {}) as object,
-      nextBillingDate: parseDate(payload.next_billing_date),
-    },
-    update: {
-      status: nextStatus,
-      billingPolicy: (payload.billing_policy ?? {}) as object,
-      deliveryPolicy: (payload.delivery_policy ?? {}) as object,
-      pricingPolicy: (payload.pricing_policy ?? {}) as object,
-      nextBillingDate: parseDate(payload.next_billing_date),
-      ...(nextStatus === ContractStatus.cancelled
-        ? { cancelledAt: new Date() }
-        : {}),
-    },
+  const contract = await upsertContractFromWebhook({
+    shopDomain: job.shopDomain,
+    topic: job.topic,
+    payload: job.payload,
+    webhookId: job.webhookId,
   });
+
+  const nextStatus = contract.status;
 
   if (
     existing &&
@@ -295,15 +148,6 @@ export async function handleContractUpdate(job: ShopifyWebhookJob) {
     });
   }
 
-  await logEvent({
-    shopId: shop.id,
-    contractId: contract.id,
-    eventType: 'contract.updated',
-    eventSubtype: job.topic,
-    payload: { status: nextStatus, webhookId: job.webhookId },
-    source: EventSource.webhook,
-  });
-
   return { contractId: contract.id, status: nextStatus };
 }
 
@@ -321,11 +165,16 @@ export async function handleBillingSuccess(job: ShopifyWebhookJob) {
     payload.order_id != null
       ? toGid('Order', String(payload.order_id))
       : `gid://shopify/Order/webhook-${job.webhookId}`;
-  const billingPolicy =
-    contract.billingPolicy && typeof contract.billingPolicy === 'object'
-      ? (contract.billingPolicy as Record<string, unknown>)
-      : {};
-  const nextBillingDate = addInterval(new Date(), billingPolicy);
+  const billingAnchor = contract.nextBillingDate ?? new Date();
+  const nextBillingDate =
+    computeNextBillingDateFromPolicy(contract.billingPolicy, billingAnchor) ??
+    addInterval(billingAnchor, {});
+
+  const existingOrder = await prisma.subscriptionOrder.findUnique({
+    where: {
+      shopId_shopifyOrderId: { shopId: shop.id, shopifyOrderId: orderGid },
+    },
+  });
 
   await prisma.$transaction(async (tx) => {
     await tx.subscriptionOrder.upsert({
@@ -356,8 +205,12 @@ export async function handleBillingSuccess(job: ShopifyWebhookJob) {
         lastBillingDate: new Date(),
         nextBillingDate,
         lastOrderId: orderGid,
-        totalCharges: { increment: 1 },
-        totalRevenue: { increment: amount },
+        ...(existingOrder
+          ? {}
+          : {
+              totalCharges: { increment: 1 },
+              totalRevenue: { increment: amount },
+            }),
         consecutiveSkips: 0,
       },
     });
@@ -444,6 +297,20 @@ export async function handleBillingFailure(job: ShopifyWebhookJob) {
 export async function handleOrderWebhook(job: ShopifyWebhookJob) {
   const payload = orderWebhookSchema.parse(job.payload);
   const shop = await getShop(job.shopDomain);
+
+  if (job.topic === 'orders/create' || job.topic === 'orders/paid') {
+    try {
+      await syncContractsFromOrderWebhook({
+        shopDomain: job.shopDomain,
+        topic: job.topic,
+        payload: job.payload,
+        webhookId: job.webhookId,
+      });
+    } catch (error) {
+      console.error('Order subscription contract sync failed:', error);
+    }
+  }
+
   const orderGid =
     payload.admin_graphql_api_id ??
     (payload.id != null ? toGid('Order', String(payload.id)) : null);

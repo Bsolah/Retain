@@ -8,6 +8,7 @@ import * as api from '../lib/analytics-api';
 import type { DateRangeKey } from '../types/analytics';
 
 const STALE_MS = 15 * 60 * 1000;
+const SUBSCRIBERS_STALE_MS = 30_000;
 
 export function useDashboardOverview(
   range: DateRangeKey,
@@ -60,7 +61,8 @@ export function useSubscribers(filters: {
       const next = lastPage.offset + lastPage.limit;
       return next < lastPage.total ? next : undefined;
     },
-    staleTime: STALE_MS,
+    staleTime: SUBSCRIBERS_STALE_MS,
+    refetchOnWindowFocus: true,
   });
 }
 

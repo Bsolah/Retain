@@ -1,4 +1,8 @@
 import { prisma, ShopStatus } from '@retain/database';
+import {
+  syncContractsFromOrderWebhook,
+  upsertContractFromWebhook,
+} from '@retain/shopify-admin';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   GDPR_CLEANUP_DELAY_MS,
@@ -20,6 +24,66 @@ import {
 } from '../middleware/shopify.js';
 
 const IDEMPOTENCY_TTL_SECONDS = 60 * 60 * 24;
+
+const CONTRACT_TOPICS = new Set([
+  'subscription_contracts/create',
+  'subscription_contracts/update',
+]);
+
+const ORDER_SUBSCRIPTION_TOPICS = new Set(['orders/create', 'orders/paid']);
+
+async function syncSubscriberFromWebhook(
+  request: FastifyRequest,
+  topic: string,
+  shopDomain: string,
+  webhookId: string,
+  payload: unknown,
+): Promise<void> {
+  if (!shopDomain) return;
+
+  if (CONTRACT_TOPICS.has(topic)) {
+    try {
+      const contract = await upsertContractFromWebhook({
+        shopDomain,
+        topic,
+        payload,
+        webhookId,
+      });
+      request.log.info(
+        { webhookId, topic, shopDomain, contractId: contract.id },
+        'Subscription contract synced from webhook',
+      );
+    } catch (error) {
+      request.log.error(
+        { err: error, webhookId, topic, shopDomain },
+        'Failed to sync subscription contract from webhook',
+      );
+    }
+    return;
+  }
+
+  if (ORDER_SUBSCRIPTION_TOPICS.has(topic)) {
+    try {
+      const result = await syncContractsFromOrderWebhook({
+        shopDomain,
+        topic,
+        payload,
+        webhookId,
+      });
+      if (result.synced > 0) {
+        request.log.info(
+          { webhookId, topic, shopDomain, synced: result.synced },
+          'Subscription contracts synced from order webhook',
+        );
+      }
+    } catch (error) {
+      request.log.error(
+        { err: error, webhookId, topic, shopDomain },
+        'Failed to sync subscription contracts from order webhook',
+      );
+    }
+  }
+}
 
 export async function registerWebhookRoutes(
   app: FastifyInstance,
@@ -100,6 +164,14 @@ async function handleWebhook(
       payload: request.body,
       receivedAt: new Date().toISOString(),
     };
+
+    await syncSubscriberFromWebhook(
+      request,
+      topic,
+      shopDomain,
+      webhookId,
+      request.body,
+    );
 
     const hmacHeader = getHeaderValue(request.headers['x-shopify-hmac-sha256']);
 
