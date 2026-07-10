@@ -1,5 +1,9 @@
 import { ContractStatus, prisma } from '@retain/database';
-import { computeNextBillingDateFromPolicy } from '@retain/shopify-admin';
+import {
+  computeNextBillingDateFromPolicy,
+  reconcileContractPaymentStatus,
+} from '@retain/shopify-admin';
+import { getDunningCampaignStatus } from './dunning.js';
 
 type ContractWhere = NonNullable<
   Parameters<typeof prisma.subscriptionContract.findMany>[0]
@@ -649,6 +653,16 @@ export async function listSubscribers(
       include: {
         customer: true,
         plan: { select: { id: true, name: true, planType: true } },
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            shopifyOrderId: true,
+            totalPrice: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: filters.frequency ? 500 : limit,
@@ -666,32 +680,92 @@ export async function listSubscribers(
     ? filteredRows.slice(offset, offset + limit)
     : filteredRows;
 
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+  if (shop) {
+    const pendingRows = pagedRows.filter(
+      (row) =>
+        row.orders[0]?.status === 'pending' ||
+        (row.status === 'active' &&
+          row.totalCharges === 0 &&
+          row.lastOrderId != null),
+    );
+    for (const row of pendingRows.slice(0, 10)) {
+      try {
+        await reconcileContractPaymentStatus(shop, row.id);
+      } catch (error) {
+        console.warn('[analytics] pending payment reconcile failed', {
+          contractId: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (pendingRows.length > 0) {
+      const refreshed = await prisma.subscriptionContract.findMany({
+        where: { id: { in: pendingRows.map((row) => row.id) } },
+        include: {
+          customer: true,
+          plan: { select: { id: true, name: true, planType: true } },
+          orders: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              shopifyOrderId: true,
+              totalPrice: true,
+            },
+          },
+        },
+      });
+      const refreshedById = new Map(refreshed.map((row) => [row.id, row]));
+      for (let index = 0; index < pagedRows.length; index += 1) {
+        const refreshedRow = refreshedById.get(pagedRows[index]!.id);
+        if (refreshedRow) {
+          pagedRows[index] = { ...pagedRows[index]!, ...refreshedRow };
+        }
+      }
+    }
+  }
+
   const resolvedTotal = filters.frequency ? filteredRows.length : total;
 
   return {
     total: resolvedTotal,
     limit,
     offset,
-    subscribers: pagedRows.map((row) => ({
-      id: row.id,
-      shopifyContractId: row.shopifyContractId,
-      status: row.status,
-      healthStatus: row.healthStatus,
-      riskScore: row.churnRiskScore ?? row.predictedChurn30d ?? 0,
-      nextBillingDate: resolveSubscriberNextBillingDate(row),
-      totalRevenue: Number(row.totalRevenue),
-      plan: row.plan,
-      customer: {
-        id: row.customer.id,
-        email: row.customer.email,
-        firstName: row.customer.firstName,
-        lastName: row.customer.lastName,
-        phone: row.customer.phone,
-        lifetimeValue: Number(row.customer.lifetimeValue),
-      },
-      frequency: formatFrequency(row.deliveryPolicy),
-      createdAt: row.createdAt,
-    })),
+    subscribers: pagedRows.map((row) => {
+      const latestOrderStatus = row.orders[0]?.status;
+      const listStatus =
+        latestOrderStatus === 'pending' ||
+        (row.status === 'active' &&
+          row.totalCharges === 0 &&
+          row.lastOrderId != null)
+          ? 'pending_payment'
+          : row.status;
+
+      return {
+        id: row.id,
+        shopifyContractId: row.shopifyContractId,
+        status: row.status,
+        listStatus,
+        healthStatus: row.healthStatus,
+        riskScore: row.churnRiskScore ?? row.predictedChurn30d ?? 0,
+        nextBillingDate: resolveSubscriberNextBillingDate(row),
+        totalRevenue: Number(row.totalRevenue),
+        plan: row.plan,
+        customer: {
+          id: row.customer.id,
+          email: row.customer.email,
+          firstName: row.customer.firstName,
+          lastName: row.customer.lastName,
+          phone: row.customer.phone,
+          lifetimeValue: Number(row.customer.lifetimeValue),
+        },
+        frequency: formatFrequency(row.deliveryPolicy),
+        createdAt: row.createdAt,
+      };
+    }),
   };
 }
 
@@ -738,12 +812,86 @@ function formatFrequency(policy: unknown): string {
   return `Every ${count} ${unit}`;
 }
 
+type StoredLineItem = {
+  productId?: string | null;
+  variantId?: string | null;
+  quantity?: number;
+  unitPrice?: number;
+  title?: string | null;
+  name?: string | null;
+};
+
+function parseContractLineItems(value: unknown): Array<{
+  productId: string | null;
+  variantId: string | null;
+  quantity: number;
+  unitPrice: number | null;
+  title: string;
+}> {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((item) => {
+    const record =
+      item && typeof item === 'object' ? (item as StoredLineItem) : {};
+    const productId = record.productId ?? null;
+    const title =
+      record.title ??
+      record.name ??
+      (productId ? (productId.split('/').pop() ?? 'Product') : 'Product');
+
+    return {
+      productId,
+      variantId: record.variantId ?? null,
+      quantity: Number(record.quantity ?? 1),
+      unitPrice: record.unitPrice != null ? Number(record.unitPrice) : null,
+      title,
+    };
+  });
+}
+
+function resolveChargeStatus(
+  status: ContractStatus,
+  nextBillingDate: Date | null,
+  latestOrderStatus?: string | null,
+  totalCharges?: number,
+  hasLastOrderId?: boolean,
+):
+  | 'scheduled'
+  | 'due'
+  | 'overdue'
+  | 'paused'
+  | 'cancelled'
+  | 'payment_failed'
+  | 'pending_payment' {
+  if (status === ContractStatus.payment_failed) return 'payment_failed';
+  if (status === ContractStatus.paused) return 'paused';
+  if (
+    status === ContractStatus.cancelled ||
+    status === ContractStatus.expired
+  ) {
+    return 'cancelled';
+  }
+  if (
+    latestOrderStatus === 'pending' ||
+    (totalCharges === 0 && hasLastOrderId)
+  ) {
+    return 'pending_payment';
+  }
+  if (!nextBillingDate) return 'scheduled';
+  const now = Date.now();
+  const due = nextBillingDate.getTime();
+  if (due > now) return 'scheduled';
+  if (due >= now - 24 * 60 * 60 * 1000) return 'due';
+  return 'overdue';
+}
+
 export async function getSubscriberDetail(shopId: string, contractId: string) {
-  const contract = await prisma.subscriptionContract.findFirst({
+  let contract = await prisma.subscriptionContract.findFirst({
     where: { id: contractId, shopId },
     include: {
       customer: true,
       plan: true,
+      orders: { orderBy: { createdAt: 'desc' }, take: 50 },
       interventions: { orderBy: { createdAt: 'desc' }, take: 50 },
       events: { orderBy: { createdAt: 'desc' }, take: 100 },
       signals: { take: 1, orderBy: { calculatedAt: 'desc' } },
@@ -751,6 +899,60 @@ export async function getSubscriberDetail(shopId: string, contractId: string) {
   });
 
   if (!contract) return null;
+
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+  if (shop) {
+    try {
+      await reconcileContractPaymentStatus(shop, contractId);
+    } catch (error) {
+      console.warn('[analytics] subscriber detail payment reconcile failed', {
+        contractId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    contract = await prisma.subscriptionContract.findFirst({
+      where: { id: contractId, shopId },
+      include: {
+        customer: true,
+        plan: true,
+        orders: { orderBy: { createdAt: 'desc' }, take: 50 },
+        interventions: { orderBy: { createdAt: 'desc' }, take: 50 },
+        events: { orderBy: { createdAt: 'desc' }, take: 100 },
+        signals: { take: 1, orderBy: { calculatedAt: 'desc' } },
+      },
+    });
+    if (!contract) return null;
+  }
+
+  const latestOrderAfterReconcile = contract.orders[0] ?? null;
+  const resolvedBeforeRepair = resolveSubscriberNextBillingDate(contract);
+  if (
+    shop &&
+    latestOrderAfterReconcile?.status === 'paid' &&
+    contract.lastBillingDate &&
+    contract.totalCharges > 0 &&
+    (!resolvedBeforeRepair ||
+      resolvedBeforeRepair.getTime() <= contract.lastBillingDate.getTime())
+  ) {
+    const repairedNextBillingDate = computeNextBillingDateFromPolicy(
+      contract.billingPolicy,
+      contract.lastBillingDate,
+    );
+    if (
+      repairedNextBillingDate &&
+      repairedNextBillingDate.getTime() > contract.lastBillingDate.getTime()
+    ) {
+      await prisma.subscriptionContract.update({
+        where: { id: contract.id },
+        data: { nextBillingDate: repairedNextBillingDate },
+      });
+      contract = {
+        ...contract,
+        nextBillingDate: repairedNextBillingDate,
+      };
+    }
+  }
 
   const signal = contract.signals[0];
   const featureVector =
@@ -774,12 +976,112 @@ export async function getSubscriberDetail(shopId: string, contractId: string) {
       createdAt: event.createdAt,
     }));
 
+  const resolvedNextBillingDate = resolveSubscriberNextBillingDate(contract);
+  const lineItems = parseContractLineItems(contract.lineItems);
+  const boxItems = parseContractLineItems(contract.boxItems);
+  const subscriptionProducts = [...lineItems, ...boxItems];
+  const latestOrder = contract.orders[0] ?? null;
+  const automaticRetries = await getDunningCampaignStatus(contract.id);
+
+  const pastPayments = [
+    ...contract.orders.map((order) => ({
+      id: order.id,
+      kind: 'order' as const,
+      status: order.status,
+      amount: Number(order.totalPrice),
+      currency: order.currency,
+      orderNumber: order.orderNumber,
+      billingCycle: order.billingCycle,
+      createdAt: order.createdAt.toISOString(),
+      detail: null as string | null,
+    })),
+    ...contract.events
+      .filter((event) =>
+        [
+          'billing.failure',
+          'billing.success',
+          'subscription_contract.billed',
+        ].includes(event.eventType),
+      )
+      .map((event) => {
+        const payload = (event.payload ?? {}) as Record<string, unknown>;
+        return {
+          id: event.id,
+          kind: 'billing_event' as const,
+          status:
+            event.eventType === 'billing.failure' ||
+            event.eventSubtype === 'payment_failed'
+              ? 'failed'
+              : 'success',
+          amount:
+            typeof payload.amount === 'number'
+              ? payload.amount
+              : Number(payload.amount ?? 0),
+          currency:
+            typeof payload.currency === 'string' ? payload.currency : 'USD',
+          orderNumber:
+            typeof payload.orderId === 'string' ? payload.orderId : null,
+          billingCycle: null as number | null,
+          createdAt: event.createdAt.toISOString(),
+          detail: event.eventSubtype,
+        };
+      }),
+  ].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+  const paymentHistory = pastPayments
+    .filter(
+      (payment) =>
+        payment.status === 'paid' ||
+        payment.status === 'success' ||
+        payment.status === 'fulfilled',
+    )
+    .slice(0, 30);
+
   return {
     id: contract.id,
+    shopifyContractId: contract.shopifyContractId,
     status: contract.status,
     healthStatus: contract.healthStatus,
     riskScore: contract.churnRiskScore ?? contract.predictedChurn30d ?? 0,
-    nextBillingDate: resolveSubscriberNextBillingDate(contract),
+    nextBillingDate: resolvedNextBillingDate?.toISOString() ?? null,
+    lastBillingDate: contract.lastBillingDate?.toISOString() ?? null,
+    totalCharges: contract.totalCharges,
+    chargeStatus: resolveChargeStatus(
+      contract.status,
+      resolvedNextBillingDate,
+      latestOrder?.status,
+      contract.totalCharges,
+      contract.lastOrderId != null,
+    ),
+    lastChargeTaken:
+      contract.totalCharges > 0 &&
+      contract.lastBillingDate != null &&
+      (!resolvedNextBillingDate ||
+        contract.lastBillingDate.getTime() < resolvedNextBillingDate.getTime()),
+    latestOrder: latestOrder
+      ? {
+          id: latestOrder.id,
+          orderNumber: latestOrder.orderNumber,
+          status: latestOrder.status,
+          totalPrice: Number(latestOrder.totalPrice),
+          currency: latestOrder.currency,
+          billingCycle: latestOrder.billingCycle,
+          createdAt: latestOrder.createdAt.toISOString(),
+        }
+      : null,
+    subscription: {
+      planName: contract.plan.name,
+      planType: contract.plan.planType,
+      billingFrequency: formatFrequency(contract.billingPolicy),
+      deliveryFrequency: formatFrequency(contract.deliveryPolicy),
+      products: subscriptionProducts,
+      totalCharges: contract.totalCharges,
+      consecutiveSkips: contract.consecutiveSkips,
+    },
+    automaticRetries,
+    paymentHistory,
     totalRevenue: Number(contract.totalRevenue),
     createdAt: contract.createdAt,
     plan: contract.plan,

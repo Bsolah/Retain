@@ -443,6 +443,76 @@ export async function getDunningRecoveryStats(shopId: string): Promise<{
   };
 }
 
+export type DunningRetryStatus = {
+  enabled: true;
+  active: boolean;
+  startedAt: string | null;
+  failureCode: string | null;
+  cardBrand: string | null;
+  paymentFailureCount: number;
+  completedSteps: number[];
+  nextRetryAt: string | null;
+  nextStepDay: number | null;
+  schedule: Array<{ day: number; retry: boolean; channels: string[] }>;
+};
+
+/** Dunning campaign + retry schedule for admin subscriber detail. */
+export async function getDunningCampaignStatus(
+  contractId: string,
+): Promise<DunningRetryStatus> {
+  const redis = getRedis();
+  const raw = await redis.get(campaignKey(contractId));
+  const schedule = DUNNING_SCHEDULE.map((step) => ({
+    day: step.day,
+    retry: step.retry,
+    channels: [...step.channels],
+  }));
+
+  if (!raw) {
+    return {
+      enabled: true,
+      active: false,
+      startedAt: null,
+      failureCode: null,
+      cardBrand: null,
+      paymentFailureCount: 0,
+      completedSteps: [],
+      nextRetryAt: null,
+      nextStepDay: null,
+      schedule,
+    };
+  }
+
+  const campaign = JSON.parse(raw) as DunningCampaign;
+  const elapsed = daysSince(campaign.startedAt);
+  const nextStep = DUNNING_SCHEDULE.find(
+    (step) => elapsed < step.day || !campaign.completedSteps.includes(step.day),
+  );
+  const nextRetryAt =
+    campaign.completedSteps.some(
+      (day) => DUNNING_SCHEDULE.find((step) => step.day === day)?.retry,
+    ) || nextStep?.retry
+      ? getOptimalRetryHour({
+          failureCode: campaign.failureCode,
+          cardBrand: campaign.cardBrand,
+          timezoneOffsetMinutes: campaign.timezoneOffsetMinutes,
+        }).toISOString()
+      : null;
+
+  return {
+    enabled: true,
+    active: true,
+    startedAt: campaign.startedAt,
+    failureCode: campaign.failureCode,
+    cardBrand: campaign.cardBrand,
+    paymentFailureCount: campaign.paymentFailureCount,
+    completedSteps: campaign.completedSteps,
+    nextRetryAt,
+    nextStepDay: nextStep?.day ?? null,
+    schedule,
+  };
+}
+
 export async function getPortalBanner(contractId: string): Promise<{
   tone: string;
   title: string;

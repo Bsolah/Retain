@@ -1,6 +1,7 @@
 import { prisma, ShopStatus } from '@retain/database';
 import {
   syncContractsFromOrderWebhook,
+  syncSubscriptionOrderPaymentFromWebhook,
   upsertContractFromWebhook,
 } from '@retain/shopify-admin';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -81,6 +82,44 @@ async function syncSubscriberFromWebhook(
         { err: error, webhookId, topic, shopDomain },
         'Failed to sync subscription contracts from order webhook',
       );
+    }
+
+    if (topic === 'orders/paid' || topic === 'orders/updated') {
+      try {
+        const shop = await prisma.shop.findUnique({
+          where: { shopifyDomain: shopDomain },
+        });
+        if (shop) {
+          const paymentResult = await syncSubscriptionOrderPaymentFromWebhook(
+            shop,
+            topic,
+            payload as {
+              id?: number | string;
+              admin_graphql_api_id?: string;
+              financial_status?: string;
+              total_price?: string | number;
+              order_number?: number | string;
+              currency?: string;
+            },
+          );
+          if (paymentResult.completed) {
+            request.log.info(
+              {
+                webhookId,
+                topic,
+                shopDomain,
+                orderGid: paymentResult.orderGid,
+              },
+              'Subscription payment link order marked paid',
+            );
+          }
+        }
+      } catch (error) {
+        request.log.error(
+          { err: error, webhookId, topic, shopDomain },
+          'Failed to reconcile subscription order payment from webhook',
+        );
+      }
     }
   }
 }

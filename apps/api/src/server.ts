@@ -16,6 +16,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerPortalApiRoutes } from './routes/portal-api.js';
 import { registerPortalAuthRoutes } from './routes/portal-auth.js';
 import { registerMigrationRoutes } from './routes/migrations.js';
+import { registerManualSubscriptionRoutes } from './routes/manual-subscriptions.js';
 import { registerNotificationRoutes } from './routes/notifications.js';
 import { registerSendGridWebhookRoutes } from './routes/sendgrid-webhooks.js';
 import { registerSupportRoutes } from './routes/support.js';
@@ -141,6 +142,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
   await registerAnalyticsRoutes(app);
+  await registerManualSubscriptionRoutes(app);
   await registerPortalAuthRoutes(app);
   await registerPortalApiRoutes(app);
   await registerCancelFlowRoutes(app);

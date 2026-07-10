@@ -19,6 +19,7 @@ import {
 } from './lib/session';
 import { AiPerformancePage } from './pages/AiPerformancePage';
 import { CohortsPage } from './pages/CohortsPage';
+import { CreateSubscriptionPage } from './pages/CreateSubscriptionPage';
 import { CreatePlanPage } from './pages/CreatePlanPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EditPlanPage } from './pages/EditPlanPage';
@@ -132,6 +133,7 @@ function AppRoutes() {
         </AppNavLink>
         <AppNavLink to="/plans">Plans</AppNavLink>
         <AppNavLink to="/subscribers">Subscribers</AppNavLink>
+        <AppNavLink to="/subscribers/new">New subscription</AppNavLink>
         <AppNavLink to="/cohorts">Retention</AppNavLink>
         <AppNavLink to="/ai">AI Performance</AppNavLink>
         <AppNavLink to="/migrations">Migrations</AppNavLink>
@@ -142,6 +144,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/cohorts" element={<CohortsPage />} />
         <Route path="/subscribers" element={<SubscribersPage />} />
+        <Route path="/subscribers/new" element={<CreateSubscriptionPage />} />
         <Route path="/ai" element={<AiPerformancePage />} />
         <Route path="/plans" element={<PlansPage />} />
         <Route path="/migrations" element={<MigrationsPage />} />

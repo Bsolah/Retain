@@ -14,6 +14,16 @@ export {
   upsertContractFromWebhook,
   type ContractLineItem,
 } from './contract-sync.js';
+export {
+  completePendingSubscriptionOrderPayment,
+  isOrderPaymentWebhookPaid,
+  normalizeShopifyOrderGid,
+  reconcileContractPaymentStatus,
+  reconcilePendingSubscriptionOrderPayment,
+  syncSubscriptionOrderPaymentFromWebhook,
+  type OrderPaymentWebhookPayload,
+  type PendingSubscriptionOrder,
+} from './subscription-order-payment.js';
 export { decrypt, encrypt } from './encryption.js';
 export {
   getAccessToken,

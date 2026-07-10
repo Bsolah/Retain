@@ -29,6 +29,8 @@ import {
   computeNextBillingDateFromPolicy,
   upsertContractFromWebhook,
   syncContractsFromOrderWebhook,
+  syncSubscriptionOrderPaymentFromWebhook,
+  isOrderPaymentWebhookPaid,
 } from '@retain/shopify-admin';
 
 function toGid(resource: string, id: string): string {
@@ -298,7 +300,11 @@ export async function handleOrderWebhook(job: ShopifyWebhookJob) {
   const payload = orderWebhookSchema.parse(job.payload);
   const shop = await getShop(job.shopDomain);
 
-  if (job.topic === 'orders/create' || job.topic === 'orders/paid') {
+  if (
+    job.topic === 'orders/create' ||
+    job.topic === 'orders/paid' ||
+    job.topic === 'orders/updated'
+  ) {
     try {
       await syncContractsFromOrderWebhook({
         shopDomain: job.shopDomain,
@@ -316,17 +322,46 @@ export async function handleOrderWebhook(job: ShopifyWebhookJob) {
     (payload.id != null ? toGid('Order', String(payload.id)) : null);
   if (!orderGid) throw new Error('Missing order id');
 
+  if (isOrderPaymentWebhookPaid(job.topic, payload)) {
+    const paymentResult = await syncSubscriptionOrderPaymentFromWebhook(
+      shop,
+      job.topic,
+      payload,
+    );
+    if (paymentResult.completed) {
+      await logEvent({
+        shopId: shop.id,
+        contractId: (
+          await prisma.subscriptionOrder.findFirst({
+            where: { shopId: shop.id, shopifyOrderId: orderGid },
+            select: { contractId: true },
+          })
+        )?.contractId,
+        eventType: 'subscription_contract.billed',
+        eventSubtype: 'payment_link_paid',
+        payload: { orderGid, webhookId: job.webhookId },
+        source: EventSource.webhook,
+      });
+    }
+  }
+
   const status =
     job.topic === 'orders/cancelled'
       ? payload.financial_status === 'refunded'
         ? OrderStatus.refunded
         : OrderStatus.cancelled
-      : job.topic === 'orders/paid'
+      : isOrderPaymentWebhookPaid(job.topic, payload)
         ? OrderStatus.paid
         : OrderStatus.pending;
 
   const existing = await prisma.subscriptionOrder.findFirst({
-    where: { shopId: shop.id, shopifyOrderId: orderGid },
+    where: {
+      shopId: shop.id,
+      OR: [
+        { shopifyOrderId: orderGid },
+        ...(payload.id != null ? [{ shopifyOrderId: String(payload.id) }] : []),
+      ],
+    },
     include: { contract: true, customer: true },
   });
 
@@ -335,35 +370,44 @@ export async function handleOrderWebhook(job: ShopifyWebhookJob) {
     const isRefund =
       status === OrderStatus.cancelled || status === OrderStatus.refunded;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.subscriptionOrder.update({
-        where: { id: existing.id },
-        data: {
-          status,
-          ...(isRefund ? { fulfillmentStatus: 'cancelled' } : {}),
-        },
-      });
-
-      if (
-        isRefund &&
-        existing.status !== OrderStatus.refunded &&
-        existing.status !== OrderStatus.cancelled
-      ) {
-        await tx.subscriptionContract.update({
-          where: { id: existing.contractId },
+    if (isRefund) {
+      await prisma.$transaction(async (tx) => {
+        await tx.subscriptionOrder.update({
+          where: { id: existing.id },
           data: {
-            totalRevenue: { decrement: refundAmount },
-            totalCharges: {
-              decrement: existing.contract.totalCharges > 0 ? 1 : 0,
-            },
+            status,
+            fulfillmentStatus: 'cancelled',
           },
         });
-        await tx.customer.update({
-          where: { id: existing.customerId },
-          data: { lifetimeValue: { decrement: refundAmount } },
-        });
-      }
-    });
+
+        if (
+          existing.status !== OrderStatus.refunded &&
+          existing.status !== OrderStatus.cancelled
+        ) {
+          await tx.subscriptionContract.update({
+            where: { id: existing.contractId },
+            data: {
+              totalRevenue: { decrement: refundAmount },
+              totalCharges: {
+                decrement: existing.contract.totalCharges > 0 ? 1 : 0,
+              },
+            },
+          });
+          await tx.customer.update({
+            where: { id: existing.customerId },
+            data: { lifetimeValue: { decrement: refundAmount } },
+          });
+        }
+      });
+    } else if (
+      status === OrderStatus.paid &&
+      existing.status !== OrderStatus.paid
+    ) {
+      await prisma.subscriptionOrder.update({
+        where: { id: existing.id },
+        data: { status: OrderStatus.paid },
+      });
+    }
   }
 
   await logEvent({

@@ -71,7 +71,8 @@ export function useSubscriberDetail(contractId: string | null) {
     queryKey: ['analytics-subscriber', contractId],
     queryFn: () => api.fetchSubscriberDetail(contractId!),
     enabled: Boolean(contractId),
-    staleTime: STALE_MS,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 

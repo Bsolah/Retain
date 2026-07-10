@@ -49,6 +49,7 @@ export type SubscriberRow = {
   id: string;
   shopifyContractId: string;
   status: string;
+  listStatus: string;
   healthStatus: string;
   riskScore: number;
   nextBillingDate: string | null;
@@ -68,10 +69,69 @@ export type SubscriberRow = {
 
 export type SubscriberDetail = {
   id: string;
+  shopifyContractId: string;
   status: string;
   healthStatus: string;
   riskScore: number;
   nextBillingDate: string | null;
+  lastBillingDate: string | null;
+  totalCharges: number;
+  chargeStatus:
+    | 'scheduled'
+    | 'due'
+    | 'overdue'
+    | 'paused'
+    | 'cancelled'
+    | 'payment_failed'
+    | 'pending_payment';
+  lastChargeTaken: boolean;
+  latestOrder: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    totalPrice: number;
+    currency: string;
+    billingCycle: number;
+    createdAt: string;
+  } | null;
+  subscription: {
+    planName: string;
+    planType: string;
+    billingFrequency: string;
+    deliveryFrequency: string;
+    products: Array<{
+      productId: string | null;
+      variantId: string | null;
+      quantity: number;
+      unitPrice: number | null;
+      title: string;
+    }>;
+    totalCharges: number;
+    consecutiveSkips: number;
+  };
+  automaticRetries: {
+    enabled: true;
+    active: boolean;
+    startedAt: string | null;
+    failureCode: string | null;
+    cardBrand: string | null;
+    paymentFailureCount: number;
+    completedSteps: number[];
+    nextRetryAt: string | null;
+    nextStepDay: number | null;
+    schedule: Array<{ day: number; retry: boolean; channels: string[] }>;
+  };
+  paymentHistory: Array<{
+    id: string;
+    kind: 'order' | 'billing_event';
+    status: string;
+    amount: number;
+    currency: string;
+    orderNumber: string | null;
+    billingCycle: number | null;
+    createdAt: string;
+    detail: string | null;
+  }>;
   totalRevenue: number;
   createdAt: string;
   plan: { id: string; name: string; planType: string };

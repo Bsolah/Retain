@@ -15,6 +15,7 @@ import {
 } from '@shopify/polaris';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { SubscriberDrawer } from '../components/analytics/SubscriberDrawer';
 import { useBulkSubscriberAction, useSubscribers } from '../hooks/useAnalytics';
 import { usePlans } from '../hooks/usePlans';
@@ -56,6 +57,12 @@ function formatSubscriberName(row: SubscriberRow): string {
 }
 
 export function SubscribersPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const createdState = location.state as {
+    createdContractId?: string;
+    shopifyOrderName?: string | null;
+  } | null;
   const [search, setSearch] = useState('');
   const [statuses, setStatuses] = useState<string[]>([]);
   const [riskLevels, setRiskLevels] = useState<string[]>([]);
@@ -136,7 +143,29 @@ export function SubscribersPage() {
   ];
 
   return (
-    <Page title="Subscribers">
+    <Page
+      title="Subscribers"
+      primaryAction={{
+        content: 'Create subscription',
+        onAction: () => navigate('/subscribers/new'),
+      }}
+    >
+      {createdState?.createdContractId ? (
+        <Banner
+          tone="success"
+          title="Subscription created"
+          onDismiss={() =>
+            navigate('/subscribers', { replace: true, state: {} })
+          }
+        >
+          <p>
+            The customer was added to subscribers
+            {createdState.shopifyOrderName
+              ? ` and Shopify order ${createdState.shopifyOrderName} was created.`
+              : '.'}
+          </p>
+        </Banner>
+      ) : null}
       <InlineStack align="start" gap="300" blockAlign="start" wrap={false}>
         <div style={{ width: 200, flexShrink: 0 }}>
           <Card padding="300">
@@ -326,6 +355,15 @@ export function SubscribersPage() {
                     return (
                       <div
                         key={row.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setActiveId(row.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setActiveId(row.id);
+                          }
+                        }}
                         style={{
                           position: 'absolute',
                           top: 0,
@@ -343,6 +381,7 @@ export function SubscribersPage() {
                           background: selected.includes(row.id)
                             ? '#eef2ff'
                             : '#fff',
+                          cursor: 'pointer',
                         }}
                       >
                         <span onClick={(event) => event.stopPropagation()}>
@@ -371,8 +410,15 @@ export function SubscribersPage() {
                           {row.plan.name}
                         </span>
                         <span>
-                          <Badge size="small">
-                            {formatStatusLabel(row.status)}
+                          <Badge
+                            size="small"
+                            tone={
+                              row.listStatus === 'pending_payment'
+                                ? 'attention'
+                                : undefined
+                            }
+                          >
+                            {formatStatusLabel(row.listStatus)}
                           </Badge>
                         </span>
                         <span>
@@ -382,7 +428,7 @@ export function SubscribersPage() {
                           {formatShortDate(row.nextBillingDate)}
                         </span>
                         <span>${row.customer.lifetimeValue.toFixed(0)}</span>
-                        <span>
+                        <span onClick={(event) => event.stopPropagation()}>
                           <Button
                             size="slim"
                             variant="plain"
@@ -422,6 +468,8 @@ export function SubscribersPage() {
 
 function formatStatusLabel(status: string): string {
   switch (status) {
+    case 'pending_payment':
+      return 'Pending payment';
     case 'payment_failed':
       return 'Failed';
     case 'active':

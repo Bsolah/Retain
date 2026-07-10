@@ -2,7 +2,7 @@ import type { Shop } from '@retain/database';
 import { env } from '../env.js';
 import { decrypt } from '../lib/encryption.js';
 
-export const SHOPIFY_API_VERSION = '2024-10';
+export const SHOPIFY_API_VERSION = '2026-04';
 
 export type ShopifyGraphqlResponse<T> = {
   data?: T;
