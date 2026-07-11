@@ -15,11 +15,24 @@ Retain is a **shared monorepo**: every Docker build uses the **repository root**
 
 For **each** service in Railway → **Settings**:
 
-1. **Root directory:** `/` (leave empty / repo root — do **not** set `apps/api` or builds will break)
+1. **Root directory:** `/` (leave empty / repo root — **do not** set `apps/api`; Docker builds need the full monorepo for `turbo prune` and workspace packages)
 2. **Config file:** path from the table above (absolute from repo root, e.g. `/apps/api/railway.toml`)
-3. **Generate domain** for public services (api, admin, portal, ai)
+3. **Builder:** Dockerfile (set in `railway.toml` — do not use Railpack/Nixpacks for these services)
+4. **Generate domain** for public services (api, admin, portal, ai)
 
 Add **Postgres** and **Redis** plugins to the project.
+
+### Why builds fail if root directory is wrong
+
+`@retain/api` and `@retain/webhook-worker` depend on workspace packages:
+
+- `@retain/database`
+- `@retain/shared`
+- `@retain/shopify-admin`
+
+The Dockerfiles use `turbo prune` + `pnpm deploy` from the **repo root**. If Railway root is `apps/api`, the build context excludes `packages/*` and deployment fails.
+
+`@retain/ai` is standalone Python but its Dockerfile still copies `apps/ai/*` paths — keep root directory at `/` for AI too.
 
 ## 2. Deploy order
 
@@ -98,6 +111,17 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 - **API / worker** bind to Railway's injected `$PORT` automatically.
 - **Watch paths** in each `railway.toml` limit redeploys to relevant packages only.
 - **Migrations** are not run by the API container — use the migrate service or `railway run` with `pnpm db:migrate:deploy` before releasing api/worker changes.
+- **Docker builds** bundle workspace deps via `pnpm deploy`; push Dockerfile changes before redeploying on Railway.
+
+## 7. Troubleshooting deploy failures
+
+| Symptom                                  | Fix                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------------- |
+| `prisma: not found` / postinstall failed | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)      |
+| `Cannot read file tsconfig.base.json`    | Ensure latest `turbo.json` + Dockerfiles are deployed                           |
+| `COPY apps/ai/...` not found             | Set Railway **root directory** to `/`, not `apps/ai`                            |
+| OAuth callback uses old tunnel URL       | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config     |
+| Healthcheck fails on api/worker          | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically |
 
 ## 6. Local parity
 
