@@ -19,8 +19,11 @@ export {
   type MigrationPlatformName,
 } from './migrations.js';
 export {
+  collectRedisUrlCandidates,
   maskRedisUrl,
   parseRedisConnection,
+  redisUrlWithFamily,
+  sleep,
   validateRedisUrl,
   type RedisConnectionConfig,
 } from './redis.js';

@@ -6,11 +6,13 @@ export type RedisConnectionConfig = {
   /** Dual-stack DNS for Railway private networking (IPv6). */
   family: 0;
   maxRetriesPerRequest: null;
-  tls?: Record<string, never>;
+  tls?: {
+    rejectUnauthorized: boolean;
+  };
 };
 
 export function validateRedisUrl(input: string): string {
-  const trimmed = input.trim();
+  const trimmed = input.trim().replace(/^['"]|['"]$/g, '');
   if (!trimmed) {
     throw new Error(
       'REDIS_URL is required. On Railway, link the Redis plugin and set REDIS_URL=${{Redis.REDIS_URL}}.',
@@ -33,6 +35,39 @@ export function validateRedisUrl(input: string): string {
   return trimmed;
 }
 
+export function collectRedisUrlCandidates(): string[] {
+  const candidates = [
+    process.env.REDIS_URL,
+    process.env.REDIS_PRIVATE_URL,
+    process.env.REDIS_PUBLIC_URL,
+  ];
+
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim().replace(/^['"]|['"]$/g, '');
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+
+    try {
+      resolved.push(validateRedisUrl(trimmed));
+      seen.add(trimmed);
+    } catch {
+      // Ignore invalid fallback entries and keep trying others.
+    }
+  }
+
+  return resolved;
+}
+
+export function redisUrlWithFamily(redisUrl: string): string {
+  const url = new URL(validateRedisUrl(redisUrl));
+  url.searchParams.set('family', '0');
+  return url.toString();
+}
+
 export function parseRedisConnection(redisUrl: string): RedisConnectionConfig {
   const url = new URL(validateRedisUrl(redisUrl));
 
@@ -43,7 +78,9 @@ export function parseRedisConnection(redisUrl: string): RedisConnectionConfig {
     password: decodeURIComponent(url.password) || undefined,
     family: 0,
     maxRetriesPerRequest: null,
-    ...(url.protocol === 'rediss:' ? { tls: {} } : {}),
+    ...(url.protocol === 'rediss:'
+      ? { tls: { rejectUnauthorized: false } }
+      : {}),
   };
 }
 
@@ -57,4 +94,10 @@ export function maskRedisUrl(redisUrl: string): string {
   } catch {
     return '<invalid-redis-url>';
   }
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
