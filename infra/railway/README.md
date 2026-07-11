@@ -9,7 +9,7 @@ Retain is a **shared monorepo**: every Docker build uses the **repository root**
 | `retain-api`               | `/apps/api/railway.toml`            | `apps/api/Dockerfile`             |
 | `retain-webhook-worker`    | `/apps/webhook-worker/railway.toml` | `apps/webhook-worker/Dockerfile`  |
 | `retain-admin`             | `/apps/admin/railway.toml`          | `apps/admin/Dockerfile`           |
-| `retain-ai`                | `/apps/ai/railway.toml`             | `apps/ai/Dockerfile`              |
+| `retain-ai`                | `/apps/ai/railway.toml`             | `Dockerfile` (context: `apps/ai`) |
 | `retain-portal` (optional) | `/apps/portal/railway.toml`         | `apps/portal/Dockerfile`          |
 | `retain-migrate` (manual)  | `/infra/docker/railway.toml`        | `infra/docker/migrate.Dockerfile` |
 
@@ -32,7 +32,7 @@ Add **Postgres** and **Redis** plugins to the project.
 
 The Dockerfiles use `turbo prune` + `pnpm deploy` from the **repo root**. If Railway root is `apps/api`, the build context excludes `packages/*` and deployment fails.
 
-`@retain/ai` is standalone Python but its Dockerfile still copies `apps/ai/*` paths — keep root directory at `/` for AI too.
+`@retain/ai` is standalone Python. Set **root directory** to `apps/ai` (not `/`) so Docker `COPY` paths resolve correctly.
 
 ## 2. Deploy order
 
@@ -121,7 +121,7 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 | `prisma: not found` / postinstall failed             | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)                                                                 |
 | `Cannot read file tsconfig.base.json`                | Ensure latest `turbo.json` + Dockerfiles are deployed                                                                                      |
 | `COPY apps/ai/models not found`                      | Model artifacts are gitignored; pull latest `apps/ai/Dockerfile` (creates empty `/app/models/churn` at build)                              |
-| `COPY apps/ai/...` not found                         | Set Railway **root directory** to `/`, not `apps/ai`                                                                                       |
+| `COPY apps/ai/...` not found                         | Set Railway **root directory** to `apps/ai` (not `/`); redeploy with latest `apps/ai/Dockerfile`                                           |
 | OAuth callback uses old tunnel URL                   | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config                                                                |
 | Healthcheck fails on api/worker                      | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically                                                            |
 

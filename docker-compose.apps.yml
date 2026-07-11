@@ -60,8 +60,8 @@ services:
 
   ai:
     build:
-      context: .
-      dockerfile: apps/ai/Dockerfile
+      context: apps/ai
+      dockerfile: Dockerfile
     container_name: retain-ai
     restart: unless-stopped
     ports:

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-# Build context MUST be the repository root:
-#   docker build -f apps/ai/Dockerfile .
+# Build context MUST be apps/ai (not the monorepo root):
+#   docker build -f apps/ai/Dockerfile apps/ai
 #
-# Railway: Root directory = / (repo root), config = /apps/ai/railway.toml
+# Railway: Root directory = apps/ai, config = /apps/ai/railway.toml
 
 FROM python:3.11-slim AS builder
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
   && rm -rf /var/lib/apt/lists/*
-COPY apps/ai/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.11-slim AS runner
@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -r retain && useradd -r -g retain retain
 COPY --from=builder /install /usr/local
-COPY apps/ai/src ./src
-COPY apps/ai/pyproject.toml ./pyproject.toml
+COPY src ./src
+COPY pyproject.toml ./pyproject.toml
 # Model artifacts are gitignored; created at runtime (or loaded from S3 via MODELS_URI_PREFIX)
 RUN mkdir -p /app/models/churn
 RUN chown -R retain:retain /app

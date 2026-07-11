@@ -19,7 +19,7 @@ Build from repository root:
 
 ```bash
 docker build -f apps/api/Dockerfile .
-docker build -f apps/ai/Dockerfile .
+docker build -f apps/ai/Dockerfile apps/ai
 docker build -f apps/webhook-worker/Dockerfile .
 docker build -f apps/admin/Dockerfile .
 docker build -f apps/portal/Dockerfile .

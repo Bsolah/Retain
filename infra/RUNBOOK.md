@@ -43,7 +43,7 @@ export TAG=staging-$(git rev-parse --short HEAD)
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$REGISTRY"
 
 docker build -f apps/api/Dockerfile -t "$REGISTRY/retain-api:$TAG" .
-docker build -f apps/ai/Dockerfile -t "$REGISTRY/retain-ai:$TAG" .
+docker build -f apps/ai/Dockerfile -t "$REGISTRY/retain-ai:$TAG" apps/ai
 docker build -f apps/webhook-worker/Dockerfile -t "$REGISTRY/retain-webhook-worker:$TAG" .
 docker build -f apps/admin/Dockerfile -t "$REGISTRY/retain-admin:$TAG" .
 docker build -f apps/portal/Dockerfile -t "$REGISTRY/retain-portal:$TAG" .
