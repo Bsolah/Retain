@@ -30,7 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /install /usr/local
 COPY apps/ai/src ./src
 COPY apps/ai/pyproject.toml ./pyproject.toml
-COPY apps/ai/models ./models
+# Model artifacts are gitignored; created at runtime (or loaded from S3 via MODELS_URI_PREFIX)
+RUN mkdir -p /app/models/churn
 RUN chown -R retain:retain /app
 USER retain
 EXPOSE 8000

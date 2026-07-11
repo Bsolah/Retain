@@ -9,7 +9,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
     port: int = 8000
     host: str = "0.0.0.0"
     environment: str = "development"
