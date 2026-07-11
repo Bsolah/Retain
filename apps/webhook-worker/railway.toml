@@ -9,6 +9,8 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/webhook-worker/Dockerfile"
+# Fallback when Railway uses Railpack instead of Dockerfile (must build workspace deps first)
+buildCommand = "pnpm run build:railway:webhook-worker"
 watchPatterns = [
   "apps/webhook-worker/**",
   "packages/database/**",

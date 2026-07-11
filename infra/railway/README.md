@@ -115,13 +115,14 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 
 ## 7. Troubleshooting deploy failures
 
-| Symptom                                  | Fix                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------------------- |
-| `prisma: not found` / postinstall failed | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)      |
-| `Cannot read file tsconfig.base.json`    | Ensure latest `turbo.json` + Dockerfiles are deployed                           |
-| `COPY apps/ai/...` not found             | Set Railway **root directory** to `/`, not `apps/ai`                            |
-| OAuth callback uses old tunnel URL       | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config     |
-| Healthcheck fails on api/worker          | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically |
+| Symptom                                              | Fix                                                                                                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Cannot find module '@retain/database'` during `tsc` | Pull latest code (`prebuild` builds workspace deps). Or set build command to `pnpm run build:railway:api` / `build:railway:webhook-worker` |
+| `prisma: not found` / postinstall failed             | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)                                                                 |
+| `Cannot read file tsconfig.base.json`                | Ensure latest `turbo.json` + Dockerfiles are deployed                                                                                      |
+| `COPY apps/ai/...` not found                         | Set Railway **root directory** to `/`, not `apps/ai`                                                                                       |
+| OAuth callback uses old tunnel URL                   | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config                                                                |
+| Healthcheck fails on api/worker                      | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically                                                            |
 
 ## 6. Local parity
 

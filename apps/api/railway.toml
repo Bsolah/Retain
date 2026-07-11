@@ -9,6 +9,8 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/api/Dockerfile"
+# Fallback when Railway uses Railpack instead of Dockerfile (must build workspace deps first)
+buildCommand = "pnpm run build:railway:api"
 watchPatterns = [
   "apps/api/**",
   "packages/database/**",

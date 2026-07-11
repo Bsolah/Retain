@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "codegen": "graphql-codegen --config codegen.ts",
-    "prebuild": "pnpm codegen",
+    "prebuild": "pnpm --filter @retain/api^... run build && pnpm codegen",
     "build": "tsc -p tsconfig.json && mkdir -p dist/graphql dist/templates && cp src/graphql/schema.graphql dist/graphql/schema.graphql && cp -R src/templates dist/templates",
     "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node --env-file=.env dist/index.js",
