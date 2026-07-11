@@ -1,0 +1,264 @@
+"""API health payload."""
+type Health {
+  status: String!
+  version: String!
+  timestamp: String!
+}
+
+enum PlanStatus {
+  active
+  paused
+  archived
+}
+
+enum PlanType {
+  standard
+  prepaid
+  box
+}
+
+enum FrequencyUnit {
+  day
+  week
+  month
+  year
+}
+
+type PlanFrequency {
+  interval: Int!
+  unit: FrequencyUnit!
+  discountPercent: Float
+  """Prepaid only: bill every N units (same unit as interval). Must be >= interval."""
+  prepaidBillingInterval: Int
+}
+
+input PlanFrequencyInput {
+  interval: Int!
+  unit: FrequencyUnit!
+  discountPercent: Float
+  prepaidBillingInterval: Int
+}
+
+type BoxSlotConfig {
+  id: String!
+  label: String
+  required: Boolean
+}
+
+input BoxSlotConfigInput {
+  id: String!
+  label: String
+  required: Boolean
+}
+
+type BoxConfig {
+  minItems: Int
+  maxItems: Int
+  allowSwaps: Boolean
+  slots: [BoxSlotConfig!]
+  eligibleProductIds: [ID!]
+}
+
+input BoxConfigInput {
+  minItems: Int
+  maxItems: Int
+  allowSwaps: Boolean
+  slots: [BoxSlotConfigInput!]
+  eligibleProductIds: [ID!]
+}
+
+type SubscriptionPlan {
+  id: ID!
+  shopId: ID!
+  shopifySellingPlanGroupId: String
+  name: String!
+  description: String
+  status: PlanStatus!
+  planType: PlanType!
+  frequencies: [PlanFrequency!]!
+  boxConfig: BoxConfig
+  productIds: [ID!]!
+  collectionIds: [ID!]!
+  subscriberCount: Int!
+  revenue: Float!
+  createdAt: String!
+  updatedAt: String!
+}
+
+input PlanInput {
+  name: String!
+  description: String
+  planType: PlanType!
+  frequencies: [PlanFrequencyInput!]!
+  boxConfig: BoxConfigInput
+  productIds: [ID!]
+  collectionIds: [ID!]
+}
+
+type ShopifyProductVariant {
+  id: ID!
+  title: String!
+  price: String!
+}
+
+type ShopifyProduct {
+  id: ID!
+  title: String!
+  handle: String!
+  status: String!
+  featuredImageUrl: String
+  variants: [ShopifyProductVariant!]!
+}
+
+type ShopifyCollection {
+  id: ID!
+  title: String!
+  handle: String!
+}
+
+type Query {
+  """Liveness probe for the GraphQL API."""
+  health: Health!
+
+  """List subscription plans for a shop."""
+  plans(shopId: ID!, status: PlanStatus): [SubscriptionPlan!]!
+
+  """Fetch a single subscription plan."""
+  plan(id: ID!): SubscriptionPlan
+
+  """Search products in the authenticated shop catalog."""
+  searchProducts(query: String!, first: Int = 20): [ShopifyProduct!]!
+
+  """List collections for the authenticated shop."""
+  collections(first: Int = 50): [ShopifyCollection!]!
+
+  """Whether the Retain subscribe block is enabled on the live theme."""
+  storefrontWidget: StorefrontWidget!
+}
+
+enum StorefrontWidgetStatus {
+  active
+  inactive
+  unknown
+}
+
+enum StorefrontWidgetSource {
+  retain_block
+  theme_native
+}
+
+type StorefrontWidget {
+  status: StorefrontWidgetStatus!
+  """How subscribe options are shown on the product page, when active."""
+  source: StorefrontWidgetSource
+  themeName: String
+  blockHandle: String!
+  deepLinkUrl: String!
+}
+
+enum ContractStatus {
+  active
+  paused
+  cancelled
+  expired
+  payment_failed
+}
+
+type BoxItem {
+  productId: ID!
+  variantId: ID!
+  quantity: Int!
+  slot: String
+}
+
+input BoxItemInput {
+  productId: ID!
+  variantId: ID!
+  quantity: Int!
+  slot: String
+}
+
+type SubscriptionContract {
+  id: ID!
+  shopId: ID!
+  customerId: ID!
+  planId: ID!
+  shopifyContractId: String!
+  status: ContractStatus!
+  billingPolicy: JSON
+  deliveryPolicy: JSON
+  pricingPolicy: JSON
+  nextBillingDate: String
+  lastBillingDate: String
+  resumeDate: String
+  lastBillingAttemptId: String
+  totalCharges: Int!
+  totalRevenue: Float!
+  consecutiveSkips: Int!
+  boxItems: [BoxItem!]
+  lineItems: [BoxItem!]
+  cancelledAt: String
+  cancellationReason: String
+  cancellationNotes: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+"""Loose JSON object for policy payloads."""
+scalar JSON
+
+input UpdateContractInput {
+  status: ContractStatus
+  nextBillingDate: String
+  boxItems: [BoxItemInput!]
+  pauseDuration: Int
+}
+
+type Mutation {
+  createPlan(input: PlanInput!): SubscriptionPlan!
+  updatePlan(id: ID!, input: PlanInput!): SubscriptionPlan!
+  archivePlan(id: ID!): SubscriptionPlan!
+  unarchivePlan(id: ID!): SubscriptionPlan!
+  """Re-sync an existing plan's selling plans to Shopify (fixes storefront names/counts)."""
+  resyncPlan(id: ID!): SubscriptionPlan!
+  """Permanently remove a plan with no subscribers (also removes Shopify selling plan group)."""
+  deletePlan(id: ID!): SubscriptionPlan!
+
+  """Merchant: update contract fields."""
+  updateContract(id: ID!, input: UpdateContractInput!): SubscriptionContract!
+  """Merchant: cancel with optional minimum-commitment override."""
+  cancelContract(
+    id: ID!
+    reason: String!
+    notes: String
+    merchantOverride: Boolean
+  ): SubscriptionContract!
+  """Merchant: pause for N days."""
+  pauseContract(id: ID!, duration: Int!): SubscriptionContract!
+  """Merchant: resume a paused contract."""
+  resumeContract(id: ID!): SubscriptionContract!
+  """Merchant: bill immediately."""
+  runNow(id: ID!): SubscriptionContract!
+
+  """Customer portal: pause."""
+  customerPauseContract(contractId: ID!, duration: Int!): SubscriptionContract!
+  """Customer portal: skip next delivery (max 2 consecutive)."""
+  customerSkipNextDelivery(contractId: ID!): SubscriptionContract!
+  """Customer portal: swap primary product/variant."""
+  customerSwapProduct(
+    contractId: ID!
+    newProductId: ID!
+    newVariantId: ID!
+  ): SubscriptionContract!
+  """Customer portal: update box contents."""
+  customerUpdateBoxItems(
+    contractId: ID!
+    items: [BoxItemInput!]!
+  ): SubscriptionContract!
+  """Customer portal: cancel with survey feedback."""
+  customerCancelContract(
+    contractId: ID!
+    reason: String!
+    feedback: String
+  ): SubscriptionContract!
+}

@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
-# Build context: repository root (docker build -f apps/ai/Dockerfile .)
+# Build context MUST be the repository root:
+#   docker build -f apps/ai/Dockerfile .
+#
+# Railway: Root directory = / (repo root), config = /apps/ai/railway.toml
 
 FROM python:3.11-slim AS builder
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -27,11 +30,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /install /usr/local
 COPY apps/ai/src ./src
 COPY apps/ai/pyproject.toml ./pyproject.toml
-# Baseline / seed model artifacts (override via S3 in production)
 COPY apps/ai/models ./models
 RUN chown -R retain:retain /app
 USER retain
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8000/health || exit 1
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+  CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/health" || exit 1
+CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]

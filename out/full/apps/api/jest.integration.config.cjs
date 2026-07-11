@@ -1,0 +1,35 @@
+/** @type {import('jest').Config} */
+module.exports = {
+  preset: 'ts-jest/presets/default-esm',
+  testEnvironment: 'node',
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: {
+    '^@retain/database$': '<rootDir>/../../packages/database/src/index.ts',
+    '^@retain/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+    '^.+/factories/(.+)\\.js$': '<rootDir>/../../factories/$1.ts',
+    '^.+/seeds/(.+)\\.js$': '<rootDir>/../../seeds/$1.ts',
+    '^(\\.\\./\\.\\./test/(.*))\\.js$': '<rootDir>/src/test/$1.ts',
+    '^(\\.\\./\\.\\./server)\\.js$': '<rootDir>/src/server.ts',
+    '^(\\.\\./\\.\\./\\.\\./lib/(.*))\\.js$': '<rootDir>/src/lib/$1.ts',
+    '^(\\.\\./\\.\\./\\.\\./services/(.*))\\.js$':
+      '<rootDir>/src/services/$1.ts',
+    '^(\\.\\./\\.\\./\\.\\./middleware/(.*))\\.js$':
+      '<rootDir>/src/middleware/$1.ts',
+    '^(\\.\\./\\.\\./\\.\\./env)\\.js$': '<rootDir>/src/env.ts',
+  },
+  transform: {
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        useESM: true,
+        tsconfig: 'tsconfig.jest.json',
+      },
+    ],
+  },
+  setupFiles: ['<rootDir>/src/test/jest.env.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/test/setup.integration.ts'],
+  testMatch: ['<rootDir>/src/__tests__/integration/**/*.test.ts'],
+  testTimeout: 60_000,
+  maxWorkers: 1,
+  forceExit: true,
+};

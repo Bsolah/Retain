@@ -5,6 +5,7 @@
 **/coverage
 **/dist
 **/.turbo
+**/out
 **/.git
 **/.github
 **/e2e/test-results
