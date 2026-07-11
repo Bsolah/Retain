@@ -11,7 +11,11 @@ async def init_redis() -> Redis:
     global _redis
     if _redis is None:
         settings = get_settings()
-        _redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        _redis = Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+        )
     return _redis
 
 

@@ -20,6 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 ENV HOST=0.0.0.0
+ENV ENABLE_SCHEDULER=false
 ENV MODELS_URI_PREFIX=/app/models/churn
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -35,6 +36,6 @@ RUN mkdir -p /app/models/churn
 RUN chown -R retain:retain /app
 USER retain
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
   CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/health" || exit 1
-CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
+CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

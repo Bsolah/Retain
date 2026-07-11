@@ -93,6 +93,19 @@ VITE_SHOPIFY_APP_URL=https://${{retain-admin.RAILWAY_PUBLIC_DOMAIN}}
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
+### AI (`retain-ai`)
+
+`/health` is a liveness probe and does **not** require Postgres/Redis. The Docker image defaults to `ENABLE_SCHEDULER=false` so the service becomes healthy before background jobs connect.
+
+```env
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+MODELS_URI_PREFIX=/app/models/churn
+ENABLE_SCHEDULER=true
+```
+
+Set `ENABLE_SCHEDULER=true` only after Postgres and Redis are linked. Until then, leave it unset (or `false`) so Railway healthchecks pass.
+
 ## 4. Shopify
 
 After domains are live:
@@ -126,6 +139,7 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 | `connect ECONNREFUSED /` or Redis startup failure    | `REDIS_URL` is missing or malformed. Link Redis to the service and set `REDIS_URL=${{Redis.REDIS_URL}}` (service name must match). Code adds `family=0` for Railway IPv6 automatically. |
 | `ENOTFOUND redis.railway.internal`                   | Same fix — ensure Redis plugin is linked; latest code uses dual-stack DNS (`family: 0`) on all Redis clients                                                                            |
 | Healthcheck fails on api/worker                      | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically                                                                                                         |
+| `retain-ai` healthcheck fails on `/health`           | Pull latest AI code (scheduler no longer blocks startup). Leave `ENABLE_SCHEDULER=false` until `DATABASE_URL` + `REDIS_URL` are set; root directory must be `apps/ai`                   |
 
 ## 6. Local parity
 

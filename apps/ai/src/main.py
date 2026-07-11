@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -66,24 +68,41 @@ class EvaluateBatchRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
+    scheduler_task: asyncio.Task[None] | None = None
 
-    if settings.enable_scheduler:
-        await init_pool()
-        await init_redis()
-        scheduler.add_job(
-            run_daily_features_safe,
-            trigger="cron",
-            hour=2,
-            minute=0,
-            id="daily_features",
-            replace_existing=True,
-        )
-        scheduler.start()
-        logger.info("APScheduler started (daily features at 02:00 UTC)")
+    async def boot_scheduler() -> None:
+        if not settings.enable_scheduler:
+            logger.info("APScheduler disabled (ENABLE_SCHEDULER=false)")
+            return
+
+        try:
+            await init_pool()
+            await init_redis()
+            scheduler.add_job(
+                run_daily_features_safe,
+                trigger="cron",
+                hour=2,
+                minute=0,
+                id="daily_features",
+                replace_existing=True,
+            )
+            scheduler.start()
+            logger.info("APScheduler started (daily features at 02:00 UTC)")
+        except Exception:
+            logger.exception(
+                "Scheduler startup failed; liveness /health remains available",
+            )
+
+    # Do not block HTTP startup on Postgres/Redis — Railway healthchecks /health first.
+    scheduler_task = asyncio.create_task(boot_scheduler())
 
     try:
         yield
     finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await scheduler_task
         if scheduler.running:
             scheduler.shutdown(wait=False)
         await close_redis()
