@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import {
+  parseRedisConnection,
   queueForTopic,
   WEBHOOK_QUEUES,
   type ShopCleanupJob,
@@ -9,15 +10,7 @@ import { env } from '../env.js';
 import { registerQueueForShutdown } from './shutdown.js';
 
 function redisConnection() {
-  const url = new URL(env.REDIS_URL);
-
-  return {
-    host: url.hostname,
-    port: Number(url.port || 6379),
-    username: url.username || undefined,
-    password: url.password || undefined,
-    maxRetriesPerRequest: null as null,
-  };
+  return parseRedisConnection(env.REDIS_URL);
 }
 
 const queues = new Map<string, Queue>();

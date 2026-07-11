@@ -18,3 +18,9 @@ export {
   type MigrationCutoverJob,
   type MigrationPlatformName,
 } from './migrations.js';
+export {
+  maskRedisUrl,
+  parseRedisConnection,
+  validateRedisUrl,
+  type RedisConnectionConfig,
+} from './redis.js';

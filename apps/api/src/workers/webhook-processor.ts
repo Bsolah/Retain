@@ -1,18 +1,15 @@
-import { WEBHOOK_QUEUES, type ShopifyWebhookJob } from '@retain/shared';
+import {
+  parseRedisConnection,
+  WEBHOOK_QUEUES,
+  type ShopifyWebhookJob,
+} from '@retain/shared';
 import { upsertContractFromWebhook } from '@retain/shopify-admin';
 import { Worker } from 'bullmq';
 import { env } from '../env.js';
 import { registerQueueForShutdown } from '../lib/shutdown.js';
 
 function redisConnection() {
-  const url = new URL(env.REDIS_URL);
-  return {
-    host: url.hostname,
-    port: Number(url.port || 6379),
-    username: url.username || undefined,
-    password: url.password || undefined,
-    maxRetriesPerRequest: null as null,
-  };
+  return parseRedisConnection(env.REDIS_URL);
 }
 
 const CONTRACT_TOPICS = new Set([

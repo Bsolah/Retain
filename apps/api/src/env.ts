@@ -1,4 +1,17 @@
-import { bool, cleanEnv, port, str, url } from 'envalid';
+import { validateRedisUrl } from '@retain/shared';
+import { bool, cleanEnv, makeValidator, port, str, url } from 'envalid';
+
+function resolveRedisUrl(): void {
+  if (process.env.REDIS_URL?.trim()) {
+    return;
+  }
+
+  process.env.REDIS_URL =
+    process.env.REDIS_PRIVATE_URL?.trim() ||
+    process.env.REDIS_PUBLIC_URL?.trim() ||
+    '';
+}
+resolveRedisUrl();
 
 function encryptionKey(input: string): string {
   if (!/^[0-9a-fA-F]{64}$/.test(input)) {
@@ -17,7 +30,7 @@ export const env = cleanEnv(process.env, {
   PORT: port({ default: 3001 }),
   HOST: str({ default: '0.0.0.0' }),
   DATABASE_URL: str(),
-  REDIS_URL: str(),
+  REDIS_URL: makeValidator(validateRedisUrl)(),
   JWT_SECRET: str(),
   ENCRYPTION_KEY: str({
     desc: '64-char hex AES-256-GCM key',

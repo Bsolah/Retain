@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import {
   MIGRATION_QUEUES,
+  parseRedisConnection,
   type MigrationCutoverJob,
   type MigrationSyncJob,
 } from '@retain/shared';
@@ -13,14 +14,7 @@ let syncWorker: Worker | undefined;
 let cutoverWorker: Worker | undefined;
 
 function redisConnection() {
-  const url = new URL(env.REDIS_URL);
-  return {
-    host: url.hostname,
-    port: Number(url.port || 6379),
-    username: url.username || undefined,
-    password: url.password || undefined,
-    maxRetriesPerRequest: null as null,
-  };
+  return parseRedisConnection(env.REDIS_URL);
 }
 
 export function startMigrationWorkers(): void {
