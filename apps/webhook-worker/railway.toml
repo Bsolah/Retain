@@ -1,0 +1,27 @@
+# Retain webhook worker — Railway config-as-code
+#
+# In Railway service settings:
+#   Root directory: /
+#   Config file:    /apps/webhook-worker/railway.toml
+#
+# ENCRYPTION_KEY and SHOPIFY_API_SECRET must match the API service.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/webhook-worker/Dockerfile"
+watchPatterns = [
+  "apps/webhook-worker/**",
+  "packages/database/**",
+  "packages/shared/**",
+  "packages/shopify-admin/**",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "turbo.json",
+]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

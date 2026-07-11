@@ -1,0 +1,27 @@
+# Retain admin (embedded Shopify app) — Railway config-as-code
+#
+# In Railway service settings:
+#   Root directory: /
+#   Config file:    /apps/admin/railway.toml
+#
+# Vite URLs are build-time ARGs. Set these Railway variables before deploy:
+#   VITE_API_URL, VITE_API_PUBLIC_URL, VITE_SHOPIFY_API_KEY, VITE_SHOPIFY_APP_URL
+# Then set ADMIN_APP_URL on the API service to this service's public domain.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/admin/Dockerfile"
+watchPatterns = [
+  "apps/admin/**",
+  "packages/shared/**",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "turbo.json",
+]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

@@ -1,0 +1,22 @@
+# Retain database migrations — Railway config-as-code
+#
+# Create a separate Railway service (or run manually) for migrations.
+# In Railway service settings:
+#   Root directory: /
+#   Config file:    /infra/docker/railway.toml
+#
+# Set DATABASE_URL, deploy once per schema change, or disable auto-deploy
+# and trigger manually after api/worker deploys.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/migrate.Dockerfile"
+watchPatterns = [
+  "packages/database/**",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+]
+
+[deploy]
+restartPolicyType = "NEVER"

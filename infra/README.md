@@ -10,6 +10,7 @@ Production-ready infrastructure as code for the Retain monorepo.
 | [k8s/](./k8s/)               | Kubernetes alternative — Helm charts, HPA, PDB, network policies, cert-manager |
 | [monitoring/](./monitoring/) | Datadog/Grafana dashboards, APM, alerting                                      |
 | [docker/](./docker/)         | Migration helper Dockerfile                                                    |
+| [railway/](./railway/)       | Railway multi-service deploy guide + per-app `railway.toml` paths              |
 | [RUNBOOK.md](./RUNBOOK.md)   | Staging/production deploy, rollback, incident response                         |
 
 ## Docker images

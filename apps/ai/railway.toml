@@ -1,0 +1,18 @@
+# Retain AI service — Railway config-as-code
+#
+# In Railway service settings:
+#   Root directory: /
+#   Config file:    /apps/ai/railway.toml
+#
+# Point API AI_SERVICE_URL at this service's public or private URL.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/ai/Dockerfile"
+watchPatterns = ["apps/ai/**"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
