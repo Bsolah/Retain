@@ -21,8 +21,7 @@ RUN pnpm dlx turbo prune @retain/webhook-worker --docker \
 FROM base AS builder
 COPY --from=prune /app/out/json/ .
 COPY --from=prune /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-  pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY --from=prune /app/out/full/ .
 RUN pnpm db:generate && pnpm --filter @retain/webhook-worker... build
 RUN pnpm --filter @retain/webhook-worker deploy --prod /deploy

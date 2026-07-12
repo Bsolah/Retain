@@ -15,8 +15,7 @@ ENV VITE_PORTAL_URL=$VITE_PORTAL_URL
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY apps/portal/package.json apps/portal/
 COPY packages/shared/package.json packages/shared/
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-  pnpm install --frozen-lockfile --filter @retain/portal...
+RUN pnpm install --frozen-lockfile --filter @retain/portal...
 COPY apps/portal apps/portal
 COPY packages/shared packages/shared
 RUN pnpm --filter @retain/shared build && pnpm --filter @retain/portal build

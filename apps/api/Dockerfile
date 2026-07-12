@@ -21,8 +21,7 @@ RUN pnpm dlx turbo prune @retain/api --docker \
 FROM base AS builder
 COPY --from=prune /app/out/json/ .
 COPY --from=prune /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-  pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY --from=prune /app/out/full/ .
 RUN pnpm db:generate && pnpm --filter @retain/api... build
 RUN pnpm --filter @retain/api deploy --prod /deploy
