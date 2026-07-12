@@ -1,10 +1,12 @@
-# syntax=docker/dockerfile:1
 # Build context MUST be the repository root:
 #   docker build -f apps/api/Dockerfile .
 #
-# Railway: Root directory = / (repo root), config = /apps/api/railway.toml
+# Railway: Root directory = / (repo root), Dockerfile path = apps/api/Dockerfile
+# If Railway fails with "lease does not exist", clear the service build cache and redeploy.
 
 FROM node:20-alpine AS base
+# Bust stale Railway BuildKit leases after removing cache mounts.
+ENV RETAIN_DOCKERFILE_REV=2
 RUN apk add --no-cache openssl libc6-compat
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
