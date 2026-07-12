@@ -1,10 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build context: repository root
-# docker build -f apps/admin/Dockerfile \
-#   --build-arg VITE_API_URL=https://retainapi-production.up.railway.app \
-#   --build-arg VITE_SHOPIFY_API_KEY=xxx \
-#   --build-arg VITE_SHOPIFY_APP_URL=https://retainadmin-production.up.railway.app \
-#   .
+# Railway: RAILWAY_DOCKERFILE_PATH=apps/admin/Dockerfile (repo root as context)
+# Clear any Custom Start Command in the Railway UI (or set: node /app/server.mjs)
 
 FROM node:20-alpine AS builder
 ENV PNPM_HOME="/pnpm"
@@ -29,7 +26,6 @@ COPY apps/admin apps/admin
 COPY packages/shared packages/shared
 RUN pnpm --filter @retain/shared build && pnpm --filter @retain/admin build
 
-# Node static server (not nginx): binds 0.0.0.0:$PORT reliably on Railway.
 FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache wget
@@ -37,14 +33,17 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV STATIC_ROOT=/app/public
 COPY apps/admin/server.mjs ./server.mjs
+COPY apps/admin/start.sh ./start.sh
 COPY --from=builder /app/apps/admin/dist ./public
-# Railway may still inject Start Command `pnpm …` from monorepo detection.
-RUN printf '%s\n' \
-      '#!/bin/sh' \
-      'exec node /app/server.mjs' \
-      > /usr/local/bin/pnpm \
-  && chmod +x /usr/local/bin/pnpm
+RUN chmod +x /app/start.sh \
+  # Sticky Railway Start Commands often replace ENTRYPOINT with pnpm or the
+  # old nginx entrypoint. Point those binaries at our Node server instead.
+  && cp /app/start.sh /usr/local/bin/pnpm \
+  && cp /app/start.sh /docker-entrypoint.sh \
+  && cp /app/start.sh /usr/local/bin/nginx \
+  && chmod +x /usr/local/bin/pnpm /docker-entrypoint.sh /usr/local/bin/nginx
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --retries=5 --start-period=10s \
   CMD wget -qO- "http://127.0.0.1:${PORT:-8080}/health" || exit 1
-CMD ["node", "server.mjs"]
+ENTRYPOINT ["/app/start.sh"]
+CMD []

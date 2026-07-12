@@ -27,9 +27,9 @@ watchPatterns = [
 ]
 
 [deploy]
-# Must match Dockerfile CMD. Never use `pnpm …` / `vite` in Railway UI Start Command.
-# If Config file is not loaded, set Custom Start Command to: node server.mjs
-startCommand = "node server.mjs"
+# Prefer empty start in Railway UI so Dockerfile ENTRYPOINT (/app/start.sh) runs.
+# If you must set one: node /app/server.mjs
+# Do NOT use pnpm or nginx — those crash this image (unless using the shims).
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
