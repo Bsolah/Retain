@@ -34,8 +34,17 @@ ENV PORT=8080
 # Official nginx image runs envsubst on /etc/nginx/templates/*.template → conf.d/
 COPY apps/admin/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/apps/admin/dist /usr/share/nginx/html
-RUN chown -R nginx:nginx /usr/share/nginx/html
+RUN chown -R nginx:nginx /usr/share/nginx/html \
+  # Railway often keeps a monorepo Start Command of `pnpm …` which replaces
+  # ENTRYPOINT/CMD. The nginx image has no pnpm → "executable pnpm could not
+  # be found". Shim any `pnpm …` start so the container still boots nginx.
+  && printf '%s\n' \
+       '#!/bin/sh' \
+       'exec /docker-entrypoint.sh nginx -g "daemon off;"' \
+       > /usr/local/bin/pnpm \
+  && chmod +x /usr/local/bin/pnpm
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT:-8080}/health" || exit 1
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
