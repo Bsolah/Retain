@@ -11,6 +11,7 @@ import {
 import {
   createSellingPlanGroup,
   hideSellingPlanGroupFromProducts,
+  reconcileRetainSellingPlanGroups,
   resyncSellingPlanGroup,
   sellingPlanInputFromRecord,
   updateSellingPlanGroup,
@@ -54,6 +55,25 @@ async function refreshStorefrontPlanFilter(
   context: GraphQLContext,
   shop: Shop,
 ): Promise<void> {
+  try {
+    const reconcile = await reconcileRetainSellingPlanGroups(shop);
+    if (reconcile.deleted.length > 0) {
+      context.request.log.info(
+        {
+          shopId: shop.id,
+          deletedGroupIds: reconcile.deleted,
+          kept: reconcile.kept,
+        },
+        'Removed orphan Retain selling plan groups from Shopify',
+      );
+    }
+  } catch (error) {
+    context.request.log.warn(
+      { err: error, shopId: shop.id },
+      'Failed to reconcile Retain selling plan groups',
+    );
+  }
+
   try {
     await syncRetainActiveSellingPlanGroupsMetafield(shop);
   } catch (error) {
@@ -372,9 +392,10 @@ export const planMutations = {
           existing.shopifySellingPlanGroupId,
         );
       } catch (error) {
-        context.request.log.warn(
-          { err: error, planId: existing.id },
-          'Failed to remove selling plan group from Shopify on archive',
+        throw userInputError(
+          error instanceof Error
+            ? `Could not remove purchase options from Shopify: ${error.message}`
+            : 'Could not remove purchase options from Shopify',
         );
       }
     }
@@ -485,9 +506,10 @@ export const planMutations = {
           existing.shopifySellingPlanGroupId,
         );
       } catch (error) {
-        context.request.log.warn(
-          { err: error, planId: existing.id },
-          'Failed to delete selling plan group in Shopify',
+        throw userInputError(
+          error instanceof Error
+            ? `Could not delete purchase options from Shopify: ${error.message}`
+            : 'Could not delete purchase options from Shopify',
         );
       }
     }

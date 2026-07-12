@@ -1,13 +1,21 @@
 {% comment %}
   Retain purchase options — simple selector for all themes:
   radio · plan name · delivery frequency (subtext) · price
-  One row per selling plan allocation (each frequency / plan).
+  One row per selling plan allocation (each frequency of each active Retain plan).
+  Only Retain-stamped groups are shown so options match admin subscription plans.
 {% endcomment %}
 
 {%- assign current_variant = product.selected_or_first_available_variant | default: product.variants.first -%}
 {%- assign retain_app_id = block.settings.retain_app_id | default: 'retain' -%}
 
-{% if product.selling_plan_groups.size > 0 %}
+{%- assign retain_group_count = 0 -%}
+{%- for group in product.selling_plan_groups -%}
+  {%- if group.app_id == retain_app_id -%}
+    {%- assign retain_group_count = retain_group_count | plus: 1 -%}
+  {%- endif -%}
+{%- endfor -%}
+
+{% if retain_group_count > 0 %}
   <div
     class="retain-purchase-options selling_plan_app_container"
     data-retain-purchase-options
@@ -23,9 +31,16 @@
       {% liquid
         assign variant_price = variant.price | money | escape
         assign variant_compare_at_price = variant.compare_at_price | money | escape
+        assign retain_allocation_count = 0
+        for allocation in variant.selling_plan_allocations
+          assign group = product.selling_plan_groups | where: 'id', allocation.selling_plan_group_id | first
+          if group != nil and group.app_id == retain_app_id
+            assign retain_allocation_count = retain_allocation_count | plus: 1
+          endif
+        endfor
       %}
 
-      {% if variant.selling_plan_allocations.size > 0 %}
+      {% if retain_allocation_count > 0 %}
         <section
           data-variant-id="{{ variant.id }}"
           class="retain-purchase-options__variant selling_plan_theme_integration{% unless variant.id == current_variant.id %} selling_plan_theme_integration--hidden retain-purchase-options--hidden{% endunless %}"

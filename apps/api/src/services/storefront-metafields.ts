@@ -23,8 +23,9 @@ const METAFIELDS_SET = `#graphql
  * Expand Admin GIDs to include numeric suffixes for tooling / debugging.
  *
  * Note: Liquid `selling_plan_group.id` is an opaque hex string and does NOT match
- * these Admin IDs. Storefront Liquid filters by `app_id == "retain"` instead;
- * archived plans are removed from products via hideSellingPlanGroupFromProducts.
+ * these Admin IDs. Storefront Liquid filters by `app_id == "retain"` instead.
+ * Orphan groups are removed by reconcileRetainSellingPlanGroups so purchase
+ * options match active Retain subscription plans.
  */
 export function expandSellingPlanGroupIdsForStorefront(
   groupIds: string[],

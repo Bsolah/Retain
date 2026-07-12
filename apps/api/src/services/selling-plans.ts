@@ -2,6 +2,7 @@ import type {
   Shop,
   SubscriptionPlan as DbSubscriptionPlan,
 } from '@retain/database';
+import { PlanStatus, prisma } from '@retain/database';
 import { RETAIN_SELLING_PLAN_APP_ID } from '@retain/shopify-admin';
 import { ShopifyClientError, shopifyAdminGraphql } from './shopify-client.js';
 import type { ValidatedFrequency } from './plan-validation.js';
@@ -169,32 +170,45 @@ async function expandCollectionProductIds(
   const productIds: string[] = [];
 
   for (const collectionId of collectionIds) {
-    const data = await shopifyAdminGraphql<{
-      collection: {
-        products: {
-          edges: Array<{ node: { id: string } }>;
-        };
-      } | null;
-    }>(
-      shop,
-      `#graphql
-        query CollectionProducts($id: ID!) {
-          collection(id: $id) {
-            products(first: 100) {
-              edges {
-                node {
-                  id
+    let cursor: string | null = null;
+    let hasNextPage = true;
+
+    while (hasNextPage) {
+      const data: {
+        collection: {
+          products: {
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            edges: Array<{ node: { id: string } }>;
+          };
+        } | null;
+      } = await shopifyAdminGraphql(
+        shop,
+        `#graphql
+          query CollectionProducts($id: ID!, $cursor: String) {
+            collection(id: $id) {
+              products(first: 100, after: $cursor) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                edges {
+                  node {
+                    id
+                  }
                 }
               }
             }
           }
-        }
-      `,
-      { id: collectionId },
-    );
+        `,
+        { id: collectionId, cursor },
+      );
 
-    for (const edge of data.collection?.products.edges ?? []) {
-      productIds.push(edge.node.id);
+      for (const edge of data.collection?.products.edges ?? []) {
+        productIds.push(edge.node.id);
+      }
+
+      hasNextPage = data.collection?.products.pageInfo.hasNextPage ?? false;
+      cursor = data.collection?.products.pageInfo.endCursor ?? null;
     }
   }
 
@@ -745,4 +759,91 @@ export async function deleteSellingPlanGroup(
   } catch (error) {
     throw new Error(formatShopifyError(error));
   }
+}
+
+function sellingPlanGroupIdKeys(groupId: string): string[] {
+  const keys = new Set<string>([groupId]);
+  const numeric = groupId.includes('/') ? groupId.split('/').pop() : groupId;
+  if (numeric) {
+    keys.add(numeric);
+    keys.add(`gid://shopify/SellingPlanGroup/${numeric}`);
+  }
+  return [...keys];
+}
+
+/**
+ * Delete Retain-stamped Shopify selling plan groups that are not linked to an
+ * active Retain plan. Prevents orphaned purchase options on the storefront.
+ */
+export async function reconcileRetainSellingPlanGroups(
+  shop: Shop,
+): Promise<{ kept: number; deleted: string[] }> {
+  const activePlans = await prisma.subscriptionPlan.findMany({
+    where: {
+      shopId: shop.id,
+      status: PlanStatus.active,
+      shopifySellingPlanGroupId: { not: null },
+    },
+    select: { shopifySellingPlanGroupId: true },
+  });
+
+  const activeKeys = new Set<string>();
+  for (const plan of activePlans) {
+    const groupId = plan.shopifySellingPlanGroupId;
+    if (!groupId) continue;
+    for (const key of sellingPlanGroupIdKeys(groupId)) {
+      activeKeys.add(key);
+    }
+  }
+
+  const deleted: string[] = [];
+  let cursor: string | null = null;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const data: {
+      sellingPlanGroups: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        nodes: Array<{ id: string; appId: string | null }>;
+      };
+    } = await shopifyAdminGraphql(
+      shop,
+      `#graphql
+        query RetainSellingPlanGroups($cursor: String) {
+          sellingPlanGroups(first: 50, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+              appId
+            }
+          }
+        }
+      `,
+      { cursor },
+    );
+
+    for (const group of data.sellingPlanGroups.nodes) {
+      if (group.appId !== RETAIN_SELLING_PLAN_APP_ID) {
+        continue;
+      }
+
+      const isActive = sellingPlanGroupIdKeys(group.id).some((key) =>
+        activeKeys.has(key),
+      );
+      if (isActive) {
+        continue;
+      }
+
+      await deleteSellingPlanGroup(shop, group.id);
+      deleted.push(group.id);
+    }
+
+    hasNextPage = data.sellingPlanGroups.pageInfo.hasNextPage;
+    cursor = data.sellingPlanGroups.pageInfo.endCursor;
+  }
+
+  return { kept: activePlans.length, deleted };
 }
