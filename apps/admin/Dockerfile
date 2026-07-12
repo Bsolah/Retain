@@ -30,7 +30,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache wget
 ENV NODE_ENV=production
-ENV HOST=0.0.0.0
+ENV HOST=::
 ENV STATIC_ROOT=/app/public
 COPY apps/admin/server.mjs ./server.mjs
 COPY apps/admin/start.sh ./start.sh

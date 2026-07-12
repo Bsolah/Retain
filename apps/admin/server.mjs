@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const staticRoot = process.env.STATIC_ROOT ?? join(__dirname, "public");
-const listenHost = process.env.HOST?.trim() || "0.0.0.0";
+// Railway edge/healthchecks often use IPv6 — bind dual-stack (`::`), not IPv4-only 0.0.0.0.
+const listenHost = process.env.HOST?.trim() || "::";
 
 const rawPort = process.env.PORT?.trim();
 let listenPort = rawPort ? Number(rawPort) : 8080;
@@ -113,6 +114,9 @@ try {
 }
 
 server.listen(listenPort, listenHost, () => {
+  const addr = server.address();
   console.log(`retain-admin listening on http://${listenHost}:${listenPort}`);
+  console.log(`bound address: ${JSON.stringify(addr)}`);
+  console.log(`PORT env: ${process.env.PORT ?? "(unset)"}`);
   console.log(`Static root: ${staticRoot}`);
 });
