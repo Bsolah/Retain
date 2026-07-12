@@ -2,7 +2,7 @@
 
 client_id = "c2b06159f0e16307984e9fd00001740e"
 name = "Retain"
-application_url = "https://comp-novelty-hero-reduces.trycloudflare.com"
+application_url = "https://retainadmin-production.up.railway.app"
 embedded = true
 
 [build]
@@ -13,79 +13,79 @@ api_version = "2025-01"
 
   [[webhooks.subscriptions]]
   topics = [ "bulk_operations/finish" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/bulk_operations/finish"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/bulk_operations/finish"
 
   [[webhooks.subscriptions]]
   topics = [ "subscription_contracts/create" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/subscription_contracts/create"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/subscription_contracts/create"
 
   [[webhooks.subscriptions]]
   topics = [ "subscription_contracts/update" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/subscription_contracts/update"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/subscription_contracts/update"
 
   [[webhooks.subscriptions]]
   topics = [ "orders/updated" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/orders/updated"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/orders/updated"
 
   [[webhooks.subscriptions]]
   topics = [ "products/update" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/products/update"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/products/update"
 
   [[webhooks.subscriptions]]
   topics = [ "subscription_billing_attempts/failure" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/subscription_billing_attempts/failure"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/subscription_billing_attempts/failure"
 
   [[webhooks.subscriptions]]
   topics = [ "customers/update" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/customers/update"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/customers/update"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/app/uninstalled"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/app/uninstalled"
 
   [[webhooks.subscriptions]]
   topics = [ "customers/create" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/customers/create"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/customers/create"
 
   [[webhooks.subscriptions]]
   topics = [ "orders/create" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/orders/create"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/orders/create"
 
   [[webhooks.subscriptions]]
   topics = [ "customers/delete" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/customers/delete"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/customers/delete"
 
   [[webhooks.subscriptions]]
   topics = [ "subscription_billing_attempts/challenged" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/subscription_billing_attempts/challenged"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/subscription_billing_attempts/challenged"
 
   [[webhooks.subscriptions]]
   topics = [ "app_subscriptions/update" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/app_subscriptions/update"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/app_subscriptions/update"
 
   [[webhooks.subscriptions]]
   topics = [ "subscription_billing_attempts/success" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/subscription_billing_attempts/success"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/subscription_billing_attempts/success"
 
   [[webhooks.subscriptions]]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/customers/data_request"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/customers/data_request"
   compliance_topics = [ "customers/data_request" ]
 
   [[webhooks.subscriptions]]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/customers/redact"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/customers/redact"
   compliance_topics = [ "customers/redact" ]
 
   [[webhooks.subscriptions]]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/shop/redact"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/shop/redact"
   compliance_topics = [ "shop/redact" ]
 
   [[webhooks.subscriptions]]
   topics = [ "orders/paid" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/orders/paid"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/orders/paid"
 
   [[webhooks.subscriptions]]
   topics = [ "orders/cancelled" ]
-  uri = "https://weekend-peterson-collectables-reseller.trycloudflare.com/webhooks/shopify/orders/cancelled"
+  uri = "https://retainapi-production.up.railway.app/webhooks/shopify/orders/cancelled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -93,5 +93,6 @@ scopes = "read_customer_payment_methods,read_customers,read_inventory,read_locat
 
 [auth]
 redirect_urls = [
-  "https://weekend-peterson-collectables-reseller.trycloudflare.com/auth/callback"
+  "https://retainapi-production.up.railway.app/auth/callback",
+  "https://retainapi-production.up.railway.app/portal/auth/callback"
 ]

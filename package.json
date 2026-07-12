@@ -23,6 +23,7 @@
     "db:push": "pnpm --filter @retain/database push",
     "db:seed": "pnpm --filter @retain/database seed",
     "shopify:deploy": "shopify app deploy --allow-updates",
+    "shopify:deploy:production-urls": "bash scripts/deploy-shopify-production-urls.sh",
     "build:railway:api": "pnpm db:generate && pnpm --filter @retain/api... build",
     "build:railway:webhook-worker": "pnpm db:generate && pnpm --filter @retain/webhook-worker... build",
     "prepare": "husky"

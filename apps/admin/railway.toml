@@ -1,12 +1,15 @@
 # Retain admin (embedded Shopify app) — Railway config-as-code
 #
 # In Railway service settings:
-#   Root directory: /
+#   Root directory: /   (repo root — required)
 #   Config file:    /apps/admin/railway.toml
+#   Builder:        Dockerfile (do NOT use Railpack/Nixpacks)
 #
-# Vite URLs are build-time ARGs. Set these Railway variables before deploy:
-#   VITE_API_URL, VITE_API_PUBLIC_URL, VITE_SHOPIFY_API_KEY, VITE_SHOPIFY_APP_URL
-# Then set ADMIN_APP_URL on the API service to this service's public domain.
+# Build-time variables (set on this service before deploy):
+#   VITE_API_URL=https://retainapi-production.up.railway.app
+#   VITE_API_PUBLIC_URL=https://retainapi-production.up.railway.app
+#   VITE_SHOPIFY_API_KEY=<client-id>
+#   VITE_SHOPIFY_APP_URL=https://retainadmin-production.up.railway.app
 
 [build]
 builder = "DOCKERFILE"
@@ -21,7 +24,9 @@ watchPatterns = [
 ]
 
 [deploy]
+# Force nginx from the Docker image — never fall back to `vite` from package.json.
+startCommand = "/docker-entrypoint.sh nginx -g 'daemon off;'"
 healthcheckPath = "/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

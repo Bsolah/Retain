@@ -59,12 +59,37 @@ JWT_SECRET=<random>
 ENCRYPTION_KEY=<64-char-hex>
 SHOPIFY_API_KEY=<client-id>
 SHOPIFY_API_SECRET=<client-secret>
-SHOPIFY_APP_URL=https://${{retain-api.RAILWAY_PUBLIC_DOMAIN}}
-ADMIN_APP_URL=https://${{retain-admin.RAILWAY_PUBLIC_DOMAIN}}
-PORTAL_URL=https://${{retain-portal.RAILWAY_PUBLIC_DOMAIN}}
+SHOPIFY_APP_URL=https://retainapi-production.up.railway.app
+ADMIN_APP_URL=https://retainadmin-production.up.railway.app
+PORTAL_URL=https://retainportal-production.up.railway.app
 AI_SERVICE_URL=https://${{retain-ai.RAILWAY_PUBLIC_DOMAIN}}
 PROCESS_WEBHOOKS_IN_API=false
 SKIP_BACKGROUND_WORKERS=false
+```
+
+Or with Railway references (if service names match):
+
+```env
+SHOPIFY_APP_URL=https://${{retain-api.RAILWAY_PUBLIC_DOMAIN}}
+ADMIN_APP_URL=https://${{retain-admin.RAILWAY_PUBLIC_DOMAIN}}
+PORTAL_URL=https://${{retain-portal.RAILWAY_PUBLIC_DOMAIN}}
+```
+
+### Admin (build-time — rebuild admin after changing)
+
+```env
+VITE_API_URL=https://retainapi-production.up.railway.app
+VITE_API_PUBLIC_URL=https://retainapi-production.up.railway.app
+VITE_SHOPIFY_API_KEY=<client-id>
+VITE_SHOPIFY_APP_URL=https://retainadmin-production.up.railway.app
+```
+
+Admin **must** use Dockerfile builder with root `/` and config `/apps/admin/railway.toml`. If the HTML contains `/@vite/client`, Railway is running Vite dev — fix builder settings and redeploy.
+
+Sync Partner Dashboard URLs with:
+
+```bash
+pnpm shopify:deploy:production-urls
 ```
 
 ### Webhook worker
@@ -76,15 +101,6 @@ REDIS_URL=${{Redis.REDIS_URL}}
 ENCRYPTION_KEY=<same-as-api>
 SHOPIFY_API_SECRET=<same-as-api>
 AI_SERVICE_URL=https://${{retain-ai.RAILWAY_PUBLIC_DOMAIN}}
-```
-
-### Admin (build-time — rebuild admin after changing)
-
-```env
-VITE_API_URL=https://${{retain-api.RAILWAY_PUBLIC_DOMAIN}}
-VITE_API_PUBLIC_URL=https://${{retain-api.RAILWAY_PUBLIC_DOMAIN}}
-VITE_SHOPIFY_API_KEY=<client-id>
-VITE_SHOPIFY_APP_URL=https://${{retain-admin.RAILWAY_PUBLIC_DOMAIN}}
 ```
 
 ### Migrate
@@ -120,7 +136,7 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 
 ## 5. Notes
 
-- **Admin nginx** listens on port **8080** (fixed in Dockerfile). Railway should detect this from `EXPOSE 8080`; if healthchecks fail, set the service port to 8080 in Settings.
+- **Admin / portal nginx** bind to Railway `$PORT` (default 8080 in the image).
 - **API / worker** bind to Railway's injected `$PORT` automatically.
 - **Watch paths** in each `railway.toml` limit redeploys to relevant packages only.
 - **Migrations** are not run by the API container — use the migrate service or `railway run` with `pnpm db:migrate:deploy` before releasing api/worker changes.
