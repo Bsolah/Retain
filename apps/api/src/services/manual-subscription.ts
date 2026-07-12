@@ -1322,12 +1322,16 @@ export async function createManualSubscription(
         });
 
         if (isPaymentLink) {
+          // Subscription stays pending_payment until orders/paid completes the
+          // first charge and schedules the next billing date.
           await tx.subscriptionContract.update({
             where: { id: contractId },
             data: {
               lastOrderId: orderGid,
               lastBillingAttemptId: billingAttemptId,
               status: ContractStatus.active,
+              nextBillingDate: null,
+              totalCharges: 0,
             },
           });
         } else {

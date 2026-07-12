@@ -31,7 +31,11 @@ const CONTRACT_TOPICS = new Set([
   'subscription_contracts/update',
 ]);
 
-const ORDER_SUBSCRIPTION_TOPICS = new Set(['orders/create', 'orders/paid']);
+const ORDER_SUBSCRIPTION_TOPICS = new Set([
+  'orders/create',
+  'orders/paid',
+  'orders/updated',
+]);
 
 async function syncSubscriberFromWebhook(
   request: FastifyRequest,

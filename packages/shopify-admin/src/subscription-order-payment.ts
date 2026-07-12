@@ -314,7 +314,160 @@ async function applyPaidSubscriptionOrderCharge(
     });
   });
 
+  try {
+    await attachCustomerPaymentMethodToContract(
+      shop,
+      order.contract.shopifyContractId,
+      normalizedOrderGid,
+    );
+  } catch {
+    // Renewal may still work if Shopify vaulted the card on the customer;
+    // local activation already succeeded.
+  }
+
   return true;
+}
+
+const CONTRACT_PAYMENT_METHOD_QUERY = `#graphql
+  query ContractPaymentMethod($id: ID!) {
+    subscriptionContract(id: $id) {
+      id
+      customerPaymentMethod {
+        id
+      }
+      customer {
+        id
+        paymentMethods(first: 10) {
+          nodes {
+            id
+            revokedAt
+          }
+        }
+      }
+    }
+  }
+`;
+
+const SUBSCRIPTION_DRAFT_CREATE = `#graphql
+  mutation PaymentLinkContractDraft($contractId: ID!) {
+    subscriptionContractUpdate(contractId: $contractId) {
+      draft {
+        id
+      }
+      userErrors {
+        message
+      }
+    }
+  }
+`;
+
+const SUBSCRIPTION_DRAFT_UPDATE = `#graphql
+  mutation PaymentLinkDraftPaymentMethod($draftId: ID!, $input: SubscriptionDraftInput!) {
+    subscriptionDraftUpdate(draftId: $draftId, input: $input) {
+      draft {
+        id
+      }
+      userErrors {
+        message
+      }
+    }
+  }
+`;
+
+const SUBSCRIPTION_DRAFT_COMMIT = `#graphql
+  mutation PaymentLinkDraftCommit($draftId: ID!) {
+    subscriptionDraftCommit(draftId: $draftId) {
+      contract {
+        id
+      }
+      userErrors {
+        message
+      }
+    }
+  }
+`;
+
+/**
+ * After a payment-link order is paid, copy the customer's vaulted payment
+ * method onto the subscription contract so renewals can charge.
+ */
+async function attachCustomerPaymentMethodToContract(
+  shop: Shop,
+  contractGid: string,
+  _orderGid: string,
+): Promise<void> {
+  const data = await shopifyAdminGraphql<{
+    subscriptionContract: {
+      id: string;
+      customerPaymentMethod: { id: string } | null;
+      customer: {
+        id: string;
+        paymentMethods: {
+          nodes: Array<{ id: string; revokedAt: string | null }>;
+        };
+      } | null;
+    } | null;
+  }>(shop, CONTRACT_PAYMENT_METHOD_QUERY, { id: contractGid });
+
+  const contract = data.subscriptionContract;
+  if (!contract) return;
+  if (contract.customerPaymentMethod?.id) return;
+
+  const paymentMethodId = contract.customer?.paymentMethods.nodes.find(
+    (method) => method.revokedAt == null,
+  )?.id;
+  if (!paymentMethodId) return;
+
+  const draftResult = await shopifyAdminGraphql<{
+    subscriptionContractUpdate: {
+      draft: { id: string } | null;
+      userErrors: Array<{ message: string }>;
+    };
+  }>(shop, SUBSCRIPTION_DRAFT_CREATE, { contractId: contractGid });
+
+  if (draftResult.subscriptionContractUpdate.userErrors.length > 0) {
+    throw new Error(
+      draftResult.subscriptionContractUpdate.userErrors
+        .map((error) => error.message)
+        .join('; '),
+    );
+  }
+
+  const draftId = draftResult.subscriptionContractUpdate.draft?.id;
+  if (!draftId) return;
+
+  const updateResult = await shopifyAdminGraphql<{
+    subscriptionDraftUpdate: {
+      draft: { id: string } | null;
+      userErrors: Array<{ message: string }>;
+    };
+  }>(shop, SUBSCRIPTION_DRAFT_UPDATE, {
+    draftId,
+    input: { paymentMethodId },
+  });
+
+  if (updateResult.subscriptionDraftUpdate.userErrors.length > 0) {
+    throw new Error(
+      updateResult.subscriptionDraftUpdate.userErrors
+        .map((error) => error.message)
+        .join('; '),
+    );
+  }
+
+  const commitResult = await shopifyAdminGraphql<{
+    subscriptionDraftCommit: {
+      contract: { id: string } | null;
+      userErrors: Array<{ message: string }>;
+    };
+  }>(shop, SUBSCRIPTION_DRAFT_COMMIT, { draftId });
+
+  if (commitResult.subscriptionDraftCommit.userErrors.length > 0) {
+    throw new Error(
+      commitResult.subscriptionDraftCommit.userErrors
+        .map((error) => error.message)
+        .join('; '),
+    );
+  }
 }
 
 export async function completePendingSubscriptionOrderPayment(

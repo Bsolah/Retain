@@ -9,6 +9,7 @@ import {
 import {
   computeNextBillingDateFromPolicy,
   hasBillingInterval,
+  reconcilePendingSubscriptionOrderPayment,
 } from '@retain/shopify-admin';
 import cron from 'node-cron';
 import { randomUUID } from 'node:crypto';
@@ -274,8 +275,43 @@ export async function reconcilePendingBillingAttempts(): Promise<number> {
         contractId: contract.id,
         shopifyOrderId: attempt.order.id,
       },
+      include: { contract: true },
     });
-    if (existingOrder && contract.status === ContractStatus.active) {
+
+    // Payment-link creates leave an unpaid pending order — complete once Shopify
+    // shows the order as paid (do not skip active contracts with totalCharges 0).
+    if (
+      existingOrder?.status === OrderStatus.pending &&
+      existingOrder.contract
+    ) {
+      const completed = await reconcilePendingSubscriptionOrderPayment(
+        contract.shop,
+        {
+          id: existingOrder.id,
+          contractId: existingOrder.contractId,
+          customerId: existingOrder.customerId,
+          shopifyOrderId: existingOrder.shopifyOrderId,
+          totalPrice: existingOrder.totalPrice,
+          status: existingOrder.status,
+          contract: {
+            id: existingOrder.contract.id,
+            shopifyContractId: existingOrder.contract.shopifyContractId,
+            billingPolicy: existingOrder.contract.billingPolicy,
+            totalCharges: existingOrder.contract.totalCharges,
+          },
+        },
+      );
+      if (completed) {
+        fixed += 1;
+      }
+      continue;
+    }
+
+    if (
+      existingOrder &&
+      existingOrder.status === OrderStatus.paid &&
+      contract.totalCharges > 0
+    ) {
       continue;
     }
 
@@ -480,6 +516,37 @@ export async function attemptBilling(
     contract.status !== ContractStatus.payment_failed
   ) {
     return 'skipped';
+  }
+
+  // Wait for payment-link first invoice before scheduling renewals.
+  if (contract.totalCharges === 0) {
+    const pendingOrder = await prisma.subscriptionOrder.findFirst({
+      where: {
+        contractId: contract.id,
+        status: OrderStatus.pending,
+      },
+      include: { contract: true },
+    });
+    if (pendingOrder?.contract) {
+      const completed = await reconcilePendingSubscriptionOrderPayment(
+        contract.shop,
+        {
+          id: pendingOrder.id,
+          contractId: pendingOrder.contractId,
+          customerId: pendingOrder.customerId,
+          shopifyOrderId: pendingOrder.shopifyOrderId,
+          totalPrice: pendingOrder.totalPrice,
+          status: pendingOrder.status,
+          contract: {
+            id: pendingOrder.contract.id,
+            shopifyContractId: pendingOrder.contract.shopifyContractId,
+            billingPolicy: pendingOrder.contract.billingPolicy,
+            totalCharges: pendingOrder.contract.totalCharges,
+          },
+        },
+      );
+      return completed ? 'success' : 'skipped';
+    }
   }
 
   if (!contract.nextBillingDate) {
