@@ -12,7 +12,9 @@ dockerfilePath = "Dockerfile"
 watchPatterns = ["**"]
 
 [deploy]
+# Explicit start so Railway never falls back to package.json (`./.venv/...`).
+startCommand = "/app/start.sh"
 healthcheckPath = "/health"
-healthcheckTimeout = 180
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

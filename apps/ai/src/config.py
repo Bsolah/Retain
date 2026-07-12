@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_REDIS_URL = "redis://localhost:6380"
+_DEFAULT_DATABASE_URL = "postgresql://retain:retain@localhost:5433/retain"
 
 
 def _resolve_railway_env() -> None:
@@ -36,8 +42,8 @@ class Settings(BaseSettings):
     port: int = 8000
     host: str = "0.0.0.0"
     environment: str = "development"
-    database_url: str = "postgresql://retain:retain@localhost:5433/retain"
-    redis_url: str = "redis://localhost:6380"
+    database_url: str = _DEFAULT_DATABASE_URL
+    redis_url: str = _DEFAULT_REDIS_URL
     feature_model_version: str = "features-v1"
     enable_scheduler: bool = False
     # Use s3://models/churn in production; local path works without AWS.
@@ -52,13 +58,30 @@ class Settings(BaseSettings):
     twilio_from_number: str = ""
     payment_update_url: str = "https://shopify.com/account"
 
-    @field_validator("redis_url")
+    @field_validator("redis_url", mode="before")
     @classmethod
-    def validate_redis_url(cls, value: str) -> str:
-        trimmed = value.strip()
-        if not trimmed.startswith(("redis://", "rediss://")):
-            raise ValueError("REDIS_URL must start with redis:// or rediss://")
-        return trimmed
+    def coerce_redis_url(cls, value: object) -> str:
+        # Never crash process startup over Redis — /health must stay reachable.
+        if value is None:
+            return _DEFAULT_REDIS_URL
+        text = str(value).strip().strip("'\"")
+        if not text:
+            return _DEFAULT_REDIS_URL
+        if not text.startswith(("redis://", "rediss://")):
+            logger.warning(
+                "Ignoring invalid REDIS_URL %r; using default for process start",
+                text[:48],
+            )
+            return _DEFAULT_REDIS_URL
+        return text
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def coerce_database_url(cls, value: object) -> str:
+        if value is None:
+            return _DEFAULT_DATABASE_URL
+        text = str(value).strip().strip("'\"")
+        return text or _DEFAULT_DATABASE_URL
 
 
 @lru_cache

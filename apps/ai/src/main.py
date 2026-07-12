@@ -7,25 +7,11 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.config import get_settings
-from src.db import check_db, close_pool, get_pool, init_pool
-from src.features.engineer import FeatureEngineer
-from src.interventions.engine import InterventionEngine
-from src.jobs.daily_features import run_shop_feature_job
-from src.jobs.train_model import run_training
-from src.models.predictor_service import (
-    clear_predictor_cache,
-    get_latest_prediction,
-    predict_contract,
-    predict_contracts,
-)
-from src.models.registry import deploy_model, get_model_by_version
-from src.redis_client import check_redis, close_redis, init_redis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-scheduler = AsyncIOScheduler(timezone="UTC")
+scheduler = None
 
 
 class GenerateFeaturesRequest(BaseModel):
@@ -71,13 +57,21 @@ async def lifespan(_app: FastAPI):
     scheduler_task: asyncio.Task[None] | None = None
 
     async def boot_scheduler() -> None:
+        global scheduler
+
         if not settings.enable_scheduler:
             logger.info("APScheduler disabled (ENABLE_SCHEDULER=false)")
             return
 
         try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+            from src.db import init_pool
+            from src.redis_client import init_redis
+
             await init_pool()
             await init_redis()
+            scheduler = AsyncIOScheduler(timezone="UTC")
             scheduler.add_job(
                 run_daily_features_safe,
                 trigger="cron",
@@ -93,7 +87,7 @@ async def lifespan(_app: FastAPI):
                 "Scheduler startup failed; liveness /health remains available",
             )
 
-    # Do not block HTTP startup on Postgres/Redis — Railway healthchecks /health first.
+    # Never block HTTP bind on Postgres/Redis/ML imports — Railway probes /health first.
     scheduler_task = asyncio.create_task(boot_scheduler())
 
     try:
@@ -103,10 +97,16 @@ async def lifespan(_app: FastAPI):
             scheduler_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await scheduler_task
-        if scheduler.running:
+        if scheduler is not None and scheduler.running:
             scheduler.shutdown(wait=False)
-        await close_redis()
-        await close_pool()
+        with contextlib.suppress(Exception):
+            from src.redis_client import close_redis
+
+            await close_redis()
+        with contextlib.suppress(Exception):
+            from src.db import close_pool
+
+            await close_pool()
 
 
 async def run_daily_features_safe() -> None:
@@ -140,6 +140,9 @@ async def health() -> JSONResponse:
 
 @app.get("/features/health")
 async def features_health() -> dict[str, Any]:
+    from src.db import check_db
+    from src.redis_client import check_redis
+
     db_ok = False
     redis_ok = False
     errors: list[str] = []
@@ -170,6 +173,8 @@ async def features_health() -> dict[str, Any]:
 
 @app.post("/features/generate")
 async def generate_features(body: GenerateFeaturesRequest) -> dict[str, Any]:
+    from src.jobs.daily_features import run_shop_feature_job
+
     try:
         return await run_shop_feature_job(body.shop_id)
     except Exception as exc:
@@ -179,6 +184,9 @@ async def generate_features(body: GenerateFeaturesRequest) -> dict[str, Any]:
 
 @app.get("/features/{contract_id}")
 async def get_features(contract_id: str) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.features.engineer import FeatureEngineer
+
     pool = await get_pool()
     engineer = FeatureEngineer(pool)
     signals = await engineer.get_latest_signals(contract_id)
@@ -189,6 +197,9 @@ async def get_features(contract_id: str) -> dict[str, Any]:
 
 @app.post("/models/train")
 async def train_model(body: TrainModelRequest) -> dict[str, Any]:
+    from src.jobs.train_model import run_training
+    from src.models.predictor_service import clear_predictor_cache
+
     try:
         result = await run_training(
             shop_id=body.shop_id,
@@ -207,6 +218,9 @@ async def train_model(body: TrainModelRequest) -> dict[str, Any]:
 
 @app.get("/models/{version}/metrics")
 async def model_metrics(version: str) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.models.registry import get_model_by_version
+
     pool = await get_pool()
     record = await get_model_by_version(pool, version)
     if record is None:
@@ -227,6 +241,10 @@ async def deploy_model_endpoint(
     version: str,
     body: DeployModelRequest,
 ) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.models.predictor_service import clear_predictor_cache
+    from src.models.registry import deploy_model
+
     pool = await get_pool()
     try:
         record = await deploy_model(
@@ -243,6 +261,8 @@ async def deploy_model_endpoint(
 
 @app.get("/predictions/{contract_id}")
 async def get_prediction(contract_id: str) -> dict[str, Any]:
+    from src.models.predictor_service import get_latest_prediction, predict_contract
+
     latest = await get_latest_prediction(contract_id)
     if latest is not None:
         return latest
@@ -257,6 +277,8 @@ async def get_prediction(contract_id: str) -> dict[str, Any]:
 
 @app.post("/predictions/batch")
 async def batch_predictions(body: BatchPredictRequest) -> dict[str, Any]:
+    from src.models.predictor_service import predict_contracts
+
     results = await predict_contracts(body.contract_ids)
     return {
         "count": len(results),
@@ -268,6 +290,10 @@ async def batch_predictions(body: BatchPredictRequest) -> dict[str, Any]:
 async def evaluate_intervention(
     body: EvaluateInterventionRequest,
 ) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.interventions.engine import InterventionEngine
+    from src.models.predictor_service import predict_contract
+
     pool = await get_pool()
     engine = InterventionEngine(pool)
     prediction = body.prediction
@@ -286,6 +312,9 @@ async def evaluate_intervention(
 async def evaluate_interventions_batch(
     body: EvaluateBatchRequest,
 ) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.interventions.engine import InterventionEngine
+
     pool = await get_pool()
     engine = InterventionEngine(pool)
     try:
@@ -297,6 +326,9 @@ async def evaluate_interventions_batch(
 
 @app.get("/interventions/{intervention_id}/status")
 async def intervention_status(intervention_id: str) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.interventions.engine import InterventionEngine
+
     pool = await get_pool()
     engine = InterventionEngine(pool)
     record = await engine.get_intervention(intervention_id)
@@ -307,6 +339,9 @@ async def intervention_status(intervention_id: str) -> dict[str, Any]:
 
 @app.post("/interventions/{intervention_id}/accept")
 async def accept_intervention(intervention_id: str) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.interventions.engine import InterventionEngine
+
     pool = await get_pool()
     engine = InterventionEngine(pool)
     try:
@@ -317,6 +352,9 @@ async def accept_intervention(intervention_id: str) -> dict[str, Any]:
 
 @app.post("/interventions/{intervention_id}/decline")
 async def decline_intervention(intervention_id: str) -> dict[str, Any]:
+    from src.db import get_pool
+    from src.interventions.engine import InterventionEngine
+
     pool = await get_pool()
     engine = InterventionEngine(pool)
     try:

@@ -128,18 +128,18 @@ Use **custom domains** on Railway for stable OAuth callback URLs (avoid changing
 
 ## 7. Troubleshooting deploy failures
 
-| Symptom                                              | Fix                                                                                                                                                                                     |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Cannot find module '@retain/database'` during `tsc` | Pull latest code (`prebuild` builds workspace deps). Or set build command to `pnpm run build:railway:api` / `build:railway:webhook-worker`                                              |
-| `prisma: not found` / postinstall failed             | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)                                                                                                              |
-| `Cannot read file tsconfig.base.json`                | Ensure latest `turbo.json` + Dockerfiles are deployed                                                                                                                                   |
-| `COPY apps/ai/models not found`                      | Model artifacts are gitignored; pull latest `apps/ai/Dockerfile` (creates empty `/app/models/churn` at build)                                                                           |
-| `COPY apps/ai/...` not found                         | Set Railway **root directory** to `apps/ai` (not `/`); redeploy with latest `apps/ai/Dockerfile`                                                                                        |
-| OAuth callback uses old tunnel URL                   | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config                                                                                                             |
-| `connect ECONNREFUSED /` or Redis startup failure    | `REDIS_URL` is missing or malformed. Link Redis to the service and set `REDIS_URL=${{Redis.REDIS_URL}}` (service name must match). Code adds `family=0` for Railway IPv6 automatically. |
-| `ENOTFOUND redis.railway.internal`                   | Same fix — ensure Redis plugin is linked; latest code uses dual-stack DNS (`family: 0`) on all Redis clients                                                                            |
-| Healthcheck fails on api/worker                      | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically                                                                                                         |
-| `retain-ai` healthcheck fails on `/health`           | Pull latest AI code (scheduler no longer blocks startup). Leave `ENABLE_SCHEDULER=false` until `DATABASE_URL` + `REDIS_URL` are set; root directory must be `apps/ai`                   |
+| Symptom                                              | Fix                                                                                                                                                                                           |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot find module '@retain/database'` during `tsc` | Pull latest code (`prebuild` builds workspace deps). Or set build command to `pnpm run build:railway:api` / `build:railway:webhook-worker`                                                    |
+| `prisma: not found` / postinstall failed             | Redeploy with latest Dockerfiles (use `pnpm deploy`, not raw prod install)                                                                                                                    |
+| `Cannot read file tsconfig.base.json`                | Ensure latest `turbo.json` + Dockerfiles are deployed                                                                                                                                         |
+| `COPY apps/ai/models not found`                      | Model artifacts are gitignored; pull latest `apps/ai/Dockerfile` (creates empty `/app/models/churn` at build)                                                                                 |
+| `COPY apps/ai/...` not found                         | Set Railway **root directory** to `apps/ai` (not `/`); redeploy with latest `apps/ai/Dockerfile`                                                                                              |
+| OAuth callback uses old tunnel URL                   | Set `SHOPIFY_APP_URL` to Railway api domain and redeploy Shopify app config                                                                                                                   |
+| `connect ECONNREFUSED /` or Redis startup failure    | `REDIS_URL` is missing or malformed. Link Redis to the service and set `REDIS_URL=${{Redis.REDIS_URL}}` (service name must match). Code adds `family=0` for Railway IPv6 automatically.       |
+| `ENOTFOUND redis.railway.internal`                   | Same fix — ensure Redis plugin is linked; latest code uses dual-stack DNS (`family: 0`) on all Redis clients                                                                                  |
+| Healthcheck fails on api/worker                      | Ensure Postgres + Redis env vars are set; Railway injects `$PORT` automatically                                                                                                               |
+| `retain-ai` healthcheck fails on `/health`           | Pull latest AI image (lazy ML imports + `/app/start.sh`). Root directory must be `apps/ai`. Leave `ENABLE_SCHEDULER=false` until DB/Redis linked. Avoid `package.json` start (needs `.venv`). |
 
 ## 6. Local parity
 

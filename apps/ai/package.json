@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "./.venv/bin/python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000",
-    "start": "./.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
+    "start": "sh start.sh",
     "build": "./.venv/bin/python -m compileall src app && mkdir -p dist && touch dist/.build",
     "lint": "./.venv/bin/python -m ruff check src app tests",
     "typecheck": "./.venv/bin/python -c \"from src.main import app; assert app.title == 'Retain AI'\"",
