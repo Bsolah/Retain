@@ -27,10 +27,9 @@ watchPatterns = [
 ]
 
 [deploy]
-# nginx image has no pnpm/node. Never set Start Command to `pnpm …` or `vite`.
-# If railway.toml is not loaded, clear Custom Start Command in Railway (use Dockerfile CMD)
-# or set: /docker-entrypoint.sh nginx -g 'daemon off;'
-startCommand = "/docker-entrypoint.sh nginx -g 'daemon off;'"
+# Must match Dockerfile CMD. Never use `pnpm …` / `vite` in Railway UI Start Command.
+# If Config file is not loaded, set Custom Start Command to: node server.mjs
+startCommand = "node server.mjs"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
