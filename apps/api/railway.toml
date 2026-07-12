@@ -9,8 +9,8 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/api/Dockerfile"
-# Fallback when Railway uses Railpack instead of Dockerfile (must build workspace deps first)
-buildCommand = "pnpm run build:railway:api"
+# Do NOT set buildCommand here — it runs `pnpm` outside the image and fails with
+# "The executable `pnpm` could not be found" when Railway skips Dockerfile.
 watchPatterns = [
   "apps/api/**",
   "packages/database/**",
@@ -23,6 +23,8 @@ watchPatterns = [
 ]
 
 [deploy]
+# Must match Dockerfile CMD. Never use `pnpm …` — the runner image has no pnpm.
+# If railway.toml is not loaded, set this same command in Railway → Settings → Deploy.
 startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 120

@@ -27,7 +27,9 @@ watchPatterns = [
 ]
 
 [deploy]
-# Force nginx from the Docker image — never fall back to `vite` from package.json.
+# nginx image has no pnpm/node. Never set Start Command to `pnpm …` or `vite`.
+# If railway.toml is not loaded, clear Custom Start Command in Railway (use Dockerfile CMD)
+# or set: /docker-entrypoint.sh nginx -g 'daemon off;'
 startCommand = "/docker-entrypoint.sh nginx -g 'daemon off;'"
 healthcheckPath = "/health"
 healthcheckTimeout = 120

@@ -9,8 +9,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/webhook-worker/Dockerfile"
-# Fallback when Railway uses Railpack instead of Dockerfile (must build workspace deps first)
-buildCommand = "pnpm run build:railway:webhook-worker"
+# Do NOT set buildCommand — avoids `pnpm` outside the Docker image.
 watchPatterns = [
   "apps/webhook-worker/**",
   "packages/database/**",
@@ -23,6 +22,7 @@ watchPatterns = [
 ]
 
 [deploy]
+# Runner has node only — never `pnpm …`. Mirror in Railway UI if config is not loaded.
 startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
