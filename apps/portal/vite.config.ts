@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
+    allowedHosts: ['retainportal-production.up.railway.app'],
   },
   build: {
     outDir: 'dist',

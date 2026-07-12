@@ -12,6 +12,7 @@ export default defineConfig({
       '.ngrok-free.app',
       '.ngrok.io',
       'localhost',
+      'retainadmin-production.up.railway.app',
     ],
     // Shopify Admin loads the embedded app in an iframe.
     headers: {
