@@ -1,5 +1,5 @@
 import { ApiError } from './api';
-import { getShopDomain, setSession } from './session';
+import { getShopDomain, resolveApiUrl, setSession } from './session';
 import type {
   CommunicationTemplate,
   MigrationError,
@@ -9,7 +9,7 @@ import type {
   ValidationReport,
 } from '../types/migrations';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const API_URL = resolveApiUrl();
 
 async function mintToken(): Promise<string> {
   const shop = getShopDomain();

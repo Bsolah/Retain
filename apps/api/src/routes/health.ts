@@ -12,6 +12,9 @@ export async function registerHealthRoutes(
       status: 'ok',
       version,
       timestamp: new Date().toISOString(),
+      // Safe public diagnostic — proves which callback the live process will send.
+      oauthCallback: `${env.SHOPIFY_APP_URL.replace(/\/$/, '')}/auth/callback`,
+      shopifyAppUrl: env.SHOPIFY_APP_URL.replace(/\/$/, ''),
     });
   });
 

@@ -100,8 +100,10 @@ export async function buildServer(): Promise<FastifyInstance> {
       }
 
       const portalOrigin = env.PORTAL_URL.replace(/\/$/, '');
+      const adminOrigin = env.ADMIN_APP_URL.replace(/\/$/, '');
       const allowed =
-        origin === portalOrigin ||
+        (portalOrigin.length > 0 && origin === portalOrigin) ||
+        (adminOrigin.length > 0 && origin === adminOrigin) ||
         SHOPIFY_ADMIN_ORIGINS.some((pattern) => pattern.test(origin));
 
       if (allowed || env.NODE_ENV !== 'production') {

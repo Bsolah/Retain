@@ -11,6 +11,9 @@
 #   VITE_SHOPIFY_API_KEY=<client-id>
 #   VITE_SHOPIFY_APP_URL=https://retainadmin-production.up.railway.app
 
+# Force Dockerfile builds — Railpack/Nixpacks incorrectly runs `vite` and
+# serves unbuilt source (/%VITE_SHOPIFY_API_KEY%, /@vite/client), which breaks
+# the embedded app with "Session required / Failed to fetch".
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "apps/admin/Dockerfile"

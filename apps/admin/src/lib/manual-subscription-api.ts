@@ -1,7 +1,7 @@
 import { ApiError } from './api';
-import { getShopDomain, setSession } from './session';
+import { getShopDomain, resolveApiUrl, setSession } from './session';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const API_URL = resolveApiUrl();
 
 export type ManualSubscriptionAddress = {
   firstName: string;

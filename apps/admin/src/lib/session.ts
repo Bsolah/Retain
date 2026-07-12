@@ -2,6 +2,9 @@ const SESSION_KEY = 'retain.sessionToken';
 const SHOP_KEY = 'retain.shopDomain';
 const SHOP_ID_KEY = 'retain.shopId';
 
+/** Production API fallback when Vite env was not baked into the admin build. */
+const RAILWAY_API_FALLBACK = 'https://retainapi-production.up.railway.app';
+
 export function getSessionToken(): string | null {
   return sessionStorage.getItem(SESSION_KEY);
 }
@@ -63,13 +66,44 @@ export function bootstrapSessionFromUrl(): {
   };
 }
 
-/** Public API base for OAuth (must be reachable by Shopify — tunnel URL). */
-export function getPublicApiUrl(): string {
+function isLocalApiUrl(url: string): boolean {
   return (
-    import.meta.env.VITE_API_PUBLIC_URL ??
-    import.meta.env.VITE_API_URL ??
-    'http://localhost:3001'
+    url.includes('localhost') ||
+    url.includes('127.0.0.1') ||
+    url.startsWith('http://')
+  );
+}
+
+/**
+ * API base URL for browser fetches.
+ * Prefer baked Vite env; if admin is on Railway but still pointing at localhost
+ * (misbuilt / Vite-dev deploy), fall back to the production API.
+ */
+export function resolveApiUrl(): string {
+  const configured = (
+    import.meta.env.VITE_API_PUBLIC_URL ||
+    import.meta.env.VITE_API_URL ||
+    ''
   ).replace(/\/$/, '');
+
+  const onRailwayAdmin =
+    typeof window !== 'undefined' &&
+    window.location.hostname.endsWith('.up.railway.app');
+
+  if (configured && !(onRailwayAdmin && isLocalApiUrl(configured))) {
+    return configured;
+  }
+
+  if (onRailwayAdmin) {
+    return RAILWAY_API_FALLBACK;
+  }
+
+  return configured || 'http://localhost:3001';
+}
+
+/** Public API base for OAuth (must be reachable by Shopify). */
+export function getPublicApiUrl(): string {
+  return resolveApiUrl();
 }
 
 /** Start OAuth at top-level (required — cannot complete OAuth inside iframe). */

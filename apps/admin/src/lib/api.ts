@@ -1,6 +1,11 @@
-import { clearSession, getShopDomain, setSession } from './session';
+import {
+  clearSession,
+  getShopDomain,
+  resolveApiUrl,
+  setSession,
+} from './session';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+const API_URL = resolveApiUrl();
 const SHOP_KEY = 'retain.shopDomain';
 
 type GraphqlResponse<T> = {
@@ -19,11 +24,19 @@ export class ApiError extends Error {
 }
 
 async function mintSessionToken(shop: string): Promise<string> {
-  const response = await fetch(`${API_URL}/auth/session-token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ shop }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/auth/session-token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shop }),
+    });
+  } catch {
+    throw new ApiError(
+      `Failed to reach API at ${API_URL}. Check VITE_API_URL / admin deploy.`,
+      'NETWORK_ERROR',
+    );
+  }
 
   const payload = (await response.json()) as {
     token?: string;

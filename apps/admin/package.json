@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
+    "start": "node -e \"console.error('retain-admin must run via Docker/nginx on Railway (apps/admin/Dockerfile). Do not use vite start in production.'); process.exit(1)\"",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --coverage"

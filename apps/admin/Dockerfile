@@ -14,7 +14,7 @@ WORKDIR /app
 
 ARG VITE_API_URL=https://retainapi-production.up.railway.app
 ARG VITE_API_PUBLIC_URL=https://retainapi-production.up.railway.app
-ARG VITE_SHOPIFY_API_KEY
+ARG VITE_SHOPIFY_API_KEY=c2b06159f0e16307984e9fd00001740e
 ARG VITE_SHOPIFY_APP_URL=https://retainadmin-production.up.railway.app
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_API_PUBLIC_URL=$VITE_API_PUBLIC_URL
@@ -28,7 +28,6 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
   pnpm install --frozen-lockfile --filter @retain/admin...
 COPY apps/admin apps/admin
 COPY packages/shared packages/shared
-RUN test -n "$VITE_SHOPIFY_API_KEY" || (echo "VITE_SHOPIFY_API_KEY build-arg is required" && exit 1)
 RUN pnpm --filter @retain/shared build && pnpm --filter @retain/admin build
 
 FROM nginx:1.27-alpine AS runner
