@@ -37,7 +37,7 @@ export type ManualSubscriptionPayload = {
   lines: ManualSubscriptionLine[];
   chargeTiming: 'now' | 'future';
   nextBillingDate?: string;
-  paymentMode?: 'saved_card' | 'payment_link';
+  paymentMode?: 'payment_link';
   paymentMethodId?: string;
   createUnpaidOrder?: boolean;
   sendPaymentLinkEmail?: boolean;

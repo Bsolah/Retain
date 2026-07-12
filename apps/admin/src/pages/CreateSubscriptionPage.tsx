@@ -2,7 +2,6 @@ import {
   Banner,
   BlockStack,
   Checkbox,
-  ChoiceList,
   FormLayout,
   Page,
   Select,
@@ -34,7 +33,6 @@ type AddressForm = {
   phone: string;
 };
 
-type PaymentMode = 'saved_card' | 'payment_link';
 type PaymentLinkResult = {
   customerEmail: string;
   paymentLink: string;
@@ -90,8 +88,6 @@ export function CreateSubscriptionPage() {
   const [frequencyIndex, setFrequencyIndex] = useState('0');
   const [chargeTiming, setChargeTiming] = useState<'now' | 'future'>('now');
   const [nextBillingDate, setNextBillingDate] = useState('');
-  const [paymentMode, setPaymentMode] = useState<PaymentMode[]>(['saved_card']);
-  const [paymentMethodId, setPaymentMethodId] = useState('');
   const [sendPaymentLinkEmail, setSendPaymentLinkEmail] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [paymentLinkResult, setPaymentLinkResult] =
@@ -114,8 +110,6 @@ export function CreateSubscriptionPage() {
     }));
   }, [selectedPlan]);
 
-  const selectedPaymentMode = paymentMode[0] ?? 'saved_card';
-
   const subtotal = useMemo(
     () =>
       lines.reduce((sum, line) => sum + Number(line.price) * line.quantity, 0),
@@ -132,15 +126,7 @@ export function CreateSubscriptionPage() {
     setFirstName((current) => customerLookup.customer!.firstName ?? current);
     setLastName((current) => customerLookup.customer!.lastName ?? current);
     setPhone((current) => customerLookup.customer!.phone ?? current);
-    if (customerLookup.paymentMethods[0]) {
-      setPaymentMethodId(
-        (current) => current || customerLookup.paymentMethods[0]!.id,
-      );
-      setPaymentMode(['saved_card']);
-    } else if (chargeTiming === 'now') {
-      setPaymentMode(['payment_link']);
-    }
-  }, [chargeTiming, customerLookup]);
+  }, [customerLookup]);
 
   const toggleSection = (key: SectionKey) => {
     setOpenSections((current) => ({ ...current, [key]: !current[key] }));
@@ -170,16 +156,6 @@ export function CreateSubscriptionPage() {
       setFormError('Choose a future billing date.');
       return;
     }
-    if (
-      chargeTiming === 'now' &&
-      selectedPaymentMode === 'saved_card' &&
-      !paymentMethodId
-    ) {
-      setFormError(
-        'Select a saved payment method or choose to send a payment link.',
-      );
-      return;
-    }
 
     try {
       const result = await createSubscription.mutateAsync({
@@ -203,23 +179,13 @@ export function CreateSubscriptionPage() {
           chargeTiming === 'future'
             ? new Date(nextBillingDate).toISOString()
             : undefined,
-        paymentMode: chargeTiming === 'now' ? selectedPaymentMode : undefined,
-        paymentMethodId:
-          chargeTiming === 'now' && selectedPaymentMode === 'saved_card'
-            ? paymentMethodId
-            : undefined,
+        paymentMode: chargeTiming === 'now' ? 'payment_link' : undefined,
         sendPaymentLinkEmail:
-          chargeTiming === 'now' &&
-          selectedPaymentMode === 'payment_link' &&
-          sendPaymentLinkEmail,
+          chargeTiming === 'now' ? sendPaymentLinkEmail : undefined,
         deliveryPrice: parsedDeliveryPrice,
       });
 
-      if (
-        chargeTiming === 'now' &&
-        selectedPaymentMode === 'payment_link' &&
-        result.paymentLink
-      ) {
+      if (chargeTiming === 'now' && result.paymentLink) {
         setPaymentLinkResult({
           customerEmail: email.trim(),
           paymentLink: result.paymentLink,
@@ -247,9 +213,7 @@ export function CreateSubscriptionPage() {
   const primaryActionLabel =
     chargeTiming === 'future'
       ? 'Schedule subscription'
-      : selectedPaymentMode === 'payment_link'
-        ? 'Create and send payment link'
-        : 'Create and charge';
+      : 'Create and send payment link';
 
   return (
     <Page
@@ -330,10 +294,7 @@ export function CreateSubscriptionPage() {
           {lookupLoading ? <Spinner size="small" /> : null}
           {customerLookup?.found ? (
             <Banner tone="info">
-              Existing Shopify customer found
-              {customerLookup.paymentMethods.length > 0
-                ? ` · ${customerLookup.paymentMethods.length} saved payment method(s)`
-                : ' · no saved payment methods yet'}
+              Existing Shopify customer found for this email.
             </Banner>
           ) : null}
         </FormSection>
@@ -589,69 +550,19 @@ export function CreateSubscriptionPage() {
             title="Payment"
             open={openSections.payment}
             onToggle={() => toggleSection('payment')}
-            summary={
-              selectedPaymentMode === 'payment_link'
-                ? 'Payment link'
-                : 'Saved card'
-            }
+            summary="Payment link"
           >
             <BlockStack gap="300">
-              <ChoiceList
-                title="How should the customer pay?"
-                choices={[
-                  {
-                    label: "Charge customer's saved card",
-                    value: 'saved_card',
-                    helpText:
-                      'Uses a payment method already vaulted in Shopify for this customer.',
-                  },
-                  {
-                    label: 'Send payment link',
-                    value: 'payment_link',
-                    helpText:
-                      'Creates an unpaid Shopify order and emails the customer a secure payment link.',
-                  },
-                ]}
-                selected={paymentMode}
-                onChange={(value) => setPaymentMode(value as PaymentMode[])}
+              <Banner tone="info">
+                Payment is collected via a Shopify payment link. An unpaid order
+                is created and the customer completes checkout through the
+                hosted link.
+              </Banner>
+              <Checkbox
+                label="Email payment link to customer"
+                checked={sendPaymentLinkEmail}
+                onChange={setSendPaymentLinkEmail}
               />
-
-              {selectedPaymentMode === 'saved_card' ? (
-                customerLookup?.paymentMethods.length ? (
-                  <Select
-                    label="Saved payment method"
-                    options={customerLookup.paymentMethods.map((method) => ({
-                      label: `${method.brand} •••• ${method.lastDigits}${
-                        method.expiryMonth && method.expiryYear
-                          ? ` (${method.expiryMonth}/${method.expiryYear})`
-                          : ''
-                      }`,
-                      value: method.id,
-                    }))}
-                    value={paymentMethodId}
-                    onChange={setPaymentMethodId}
-                  />
-                ) : (
-                  <Banner tone="warning">
-                    No saved payment method for this customer. Enter their email
-                    above to look up vaulted cards, or choose &quot;Send payment
-                    link&quot; so they can pay securely via Shopify.
-                  </Banner>
-                )
-              ) : (
-                <BlockStack gap="200">
-                  <Banner tone="info">
-                    Shopify will create a normal order marked as unpaid. The
-                    customer can complete payment through Shopify&apos;s hosted
-                    checkout link.
-                  </Banner>
-                  <Checkbox
-                    label="Email payment link to customer"
-                    checked={sendPaymentLinkEmail}
-                    onChange={setSendPaymentLinkEmail}
-                  />
-                </BlockStack>
-              )}
             </BlockStack>
           </FormSection>
         ) : null}

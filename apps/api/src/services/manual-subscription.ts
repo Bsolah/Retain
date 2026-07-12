@@ -51,7 +51,7 @@ export type ManualSubscriptionInput = {
   lines: ManualSubscriptionLine[];
   chargeTiming: 'now' | 'future';
   nextBillingDate?: string;
-  paymentMode?: 'saved_card' | 'payment_link';
+  paymentMode?: 'payment_link';
   paymentMethodId?: string;
   createUnpaidOrder?: boolean;
   sendPaymentLinkEmail?: boolean;
@@ -126,8 +126,17 @@ export function parseManualSubscriptionInput(
 
   const chargeTiming = body.chargeTiming === 'future' ? 'future' : 'now';
   const frequencyIndex = Number(body.frequencyIndex ?? 0);
-  const paymentMode =
-    body.paymentMode === 'payment_link' ? 'payment_link' : 'saved_card';
+  // Manual create always uses a Shopify payment link (no saved-card charge).
+  if (
+    body.paymentMode != null &&
+    body.paymentMode !== 'payment_link' &&
+    chargeTiming === 'now'
+  ) {
+    throw new Error(
+      'Manual subscriptions must be paid via payment link. Saved-card charging is not supported.',
+    );
+  }
+  const paymentMode = 'payment_link' as const;
   const sendPaymentLinkEmail = body.sendPaymentLinkEmail !== false;
   const deliveryPriceRaw = body.deliveryPrice;
   const deliveryPrice =
@@ -209,10 +218,7 @@ export function parseManualSubscriptionInput(
         ? body.nextBillingDate
         : undefined,
     paymentMode: chargeTiming === 'now' ? paymentMode : undefined,
-    paymentMethodId:
-      typeof body.paymentMethodId === 'string'
-        ? body.paymentMethodId
-        : undefined,
+    paymentMethodId: undefined,
     createUnpaidOrder:
       body.createUnpaidOrder === true || paymentMode === 'payment_link',
     sendPaymentLinkEmail,
@@ -1098,12 +1104,9 @@ export async function createManualSubscription(
   if (
     input.chargeTiming === 'now' &&
     input.paymentMode !== 'payment_link' &&
-    !input.paymentMethodId &&
     !input.createUnpaidOrder
   ) {
-    throw new Error(
-      'Pay now requires a saved payment method or payment link delivery',
-    );
+    throw new Error('Pay now requires payment link delivery');
   }
 
   const shopifyCustomerId = await ensureShopifyCustomer(
