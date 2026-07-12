@@ -51,20 +51,15 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Install requests from Shopify Admin include HMAC; require it when present
-      // or when not in local test mode.
+      // Install may be started from the embedded admin with only `shop` (+ optional
+      // `host`). Shopify signs HMAC for application_url (admin), not for this API
+      // path — so requiring HMAC here breaks reinstall/OAuth kickoff in production.
+      // If Shopify did send hmac (rare for this route), still verify it.
+      // CSRF is covered by OAuth `state` stored in Redis until callback.
       const hasHmac = Boolean(request.query.hmac);
       if (hasHmac && !verifyShopifyQueryHmac(request.query)) {
         return reply.status(401).send({
           message: 'Invalid HMAC',
-          code: 'UNAUTHORIZED',
-          extensions: {},
-        });
-      }
-
-      if (!hasHmac && env.NODE_ENV === 'production') {
-        return reply.status(401).send({
-          message: 'Missing HMAC',
           code: 'UNAUTHORIZED',
           extensions: {},
         });
