@@ -101,9 +101,19 @@ export async function buildServer(): Promise<FastifyInstance> {
 
       const portalOrigin = env.PORTAL_URL.replace(/\/$/, '');
       const adminOrigin = env.ADMIN_APP_URL.replace(/\/$/, '');
+      let railwayFrontend = false;
+      try {
+        const host = new URL(origin).hostname;
+        // Embedded admin/portal Origin is the Railway public host, not admin.shopify.com.
+        railwayFrontend = host.endsWith('.up.railway.app');
+      } catch {
+        railwayFrontend = false;
+      }
+
       const allowed =
         (portalOrigin.length > 0 && origin === portalOrigin) ||
         (adminOrigin.length > 0 && origin === adminOrigin) ||
+        railwayFrontend ||
         SHOPIFY_ADMIN_ORIGINS.some((pattern) => pattern.test(origin));
 
       if (allowed || env.NODE_ENV !== 'production') {
