@@ -1,4 +1,8 @@
-import { validateRedisUrl } from '@retain/shared';
+import {
+  resolvePostgresUrlFromEnv,
+  validatePostgresUrl,
+  validateRedisUrl,
+} from '@retain/shared';
 import { bool, cleanEnv, makeValidator, port, str, url } from 'envalid';
 
 function resolveRedisUrl(): void {
@@ -12,6 +16,14 @@ function resolveRedisUrl(): void {
     '';
 }
 resolveRedisUrl();
+
+function resolveDatabaseUrl(): void {
+  const resolved = resolvePostgresUrlFromEnv();
+  if (resolved) {
+    process.env.DATABASE_URL = resolved;
+  }
+}
+resolveDatabaseUrl();
 
 function encryptionKey(input: string): string {
   if (!/^[0-9a-fA-F]{64}$/.test(input)) {
@@ -29,7 +41,7 @@ export const env = cleanEnv(process.env, {
   }),
   PORT: port({ default: 3001 }),
   HOST: str({ default: '0.0.0.0' }),
-  DATABASE_URL: str(),
+  DATABASE_URL: makeValidator(validatePostgresUrl)(),
   REDIS_URL: makeValidator(validateRedisUrl)(),
   JWT_SECRET: str(),
   ENCRYPTION_KEY: str({

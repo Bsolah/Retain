@@ -16,7 +16,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/utils.test.ts src/redis.test.ts"
+    "test": "node --import tsx --test src/utils.test.ts src/redis.test.ts src/postgres.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.16.5",

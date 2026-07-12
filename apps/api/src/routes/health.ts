@@ -32,6 +32,7 @@ export async function registerHealthRoutes(
         status: 'error',
         service: 'postgresql',
         timestamp: new Date().toISOString(),
+        hint: 'Set DATABASE_URL=${{Postgres.DATABASE_URL}} on this service (postgresql://…). Link the Postgres plugin first.',
       });
     }
   });

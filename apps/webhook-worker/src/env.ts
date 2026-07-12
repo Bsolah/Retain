@@ -1,4 +1,8 @@
-import { validateRedisUrl } from '@retain/shared';
+import {
+  resolvePostgresUrlFromEnv,
+  validatePostgresUrl,
+  validateRedisUrl,
+} from '@retain/shared';
 import { cleanEnv, makeValidator, port, str } from 'envalid';
 
 function resolveRedisUrl(): void {
@@ -13,6 +17,14 @@ function resolveRedisUrl(): void {
 }
 resolveRedisUrl();
 
+function resolveDatabaseUrl(): void {
+  const resolved = resolvePostgresUrlFromEnv();
+  if (resolved) {
+    process.env.DATABASE_URL = resolved;
+  }
+}
+resolveDatabaseUrl();
+
 export const env = cleanEnv(process.env, {
   NODE_ENV: str({
     choices: ['development', 'test', 'production'],
@@ -20,7 +32,7 @@ export const env = cleanEnv(process.env, {
   }),
   PORT: port({ default: 3002 }),
   HOST: str({ default: '0.0.0.0' }),
-  DATABASE_URL: str(),
+  DATABASE_URL: makeValidator(validatePostgresUrl)(),
   REDIS_URL: makeValidator(validateRedisUrl)(),
   ENCRYPTION_KEY: str({
     desc: '64-char hex AES-256-GCM key (same as API)',

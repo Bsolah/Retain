@@ -211,13 +211,19 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       } catch (error) {
         request.log.error({ err: error }, 'OAuth callback failed');
         const detail = error instanceof Error ? error.message : 'Unknown error';
+        const isDatabaseUrl =
+          /DATABASE_URL|postgresql:\/\/|postgres:\/\/|datasource `db`/i.test(
+            detail,
+          );
         return reply
           .status(500)
           .type('text/html')
           .send(
             oauthErrorReply({
               title: 'OAuth callback failed',
-              detail: `${detail}. Check API logs. Common causes: wrong API key/secret, or redirect URL in Partner Dashboard does not match SHOPIFY_APP_URL/auth/callback.`,
+              detail: isDatabaseUrl
+                ? `${detail}. Fix DATABASE_URL on the API Railway service: link the Postgres plugin and set DATABASE_URL=\${{Postgres.DATABASE_URL}} (must start with postgresql://). Then redeploy and reinstall.`
+                : `${detail}. Check API logs. Common causes: wrong API key/secret, or redirect URL in Partner Dashboard does not match SHOPIFY_APP_URL/auth/callback.`,
             }),
           );
       }
