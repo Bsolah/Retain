@@ -51,6 +51,10 @@ class EvaluateBatchRequest(BaseModel):
     shop_id: str = Field(..., min_length=1)
 
 
+class PipelineRunRequest(BaseModel):
+    shop_id: str | None = None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
@@ -77,11 +81,11 @@ async def lifespan(_app: FastAPI):
                 trigger="cron",
                 hour=2,
                 minute=0,
-                id="daily_features",
+                id="daily_pipeline",
                 replace_existing=True,
             )
             scheduler.start()
-            logger.info("APScheduler started (daily features at 02:00 UTC)")
+            logger.info("APScheduler started (daily AI pipeline at 02:00 UTC)")
         except Exception:
             logger.exception(
                 "Scheduler startup failed; liveness /health remains available",
@@ -110,12 +114,12 @@ async def lifespan(_app: FastAPI):
 
 
 async def run_daily_features_safe() -> None:
-    from src.jobs.daily_features import run_daily_feature_job
+    from src.jobs.daily_pipeline import run_daily_pipeline
 
     try:
-        await run_daily_feature_job()
+        await run_daily_pipeline()
     except Exception:
-        logger.exception("Scheduled daily feature job failed")
+        logger.exception("Scheduled daily AI pipeline failed")
 
 
 app = FastAPI(
@@ -361,3 +365,24 @@ async def decline_intervention(intervention_id: str) -> dict[str, Any]:
         return await engine.decline_intervention(intervention_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/pipeline/last")
+async def pipeline_last() -> dict[str, Any]:
+    from src.jobs.daily_pipeline import load_pipeline_last_run
+
+    last = await load_pipeline_last_run()
+    return last or {}
+
+
+@app.post("/pipeline/run")
+async def pipeline_run(body: PipelineRunRequest) -> dict[str, Any]:
+    from src.jobs.daily_pipeline import run_daily_pipeline, run_shop_pipeline
+
+    try:
+        if body.shop_id:
+            return await run_shop_pipeline(body.shop_id)
+        return await run_daily_pipeline()
+    except Exception as exc:
+        logger.exception("Pipeline run failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

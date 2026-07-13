@@ -123,3 +123,51 @@ export function useAiPerformance() {
     staleTime: STALE_MS,
   });
 }
+
+export function useAiStatus() {
+  return useQuery({
+    queryKey: ['ai-status'],
+    queryFn: api.fetchAiStatus,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useAiActions() {
+  const queryClient = useQueryClient();
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['analytics-ai'] }),
+      queryClient.invalidateQueries({ queryKey: ['ai-status'] }),
+      queryClient.invalidateQueries({ queryKey: ['analytics-subscribers'] }),
+      queryClient.invalidateQueries({ queryKey: ['analytics-overview'] }),
+    ]);
+  };
+
+  return {
+    refreshFeatures: useMutation({
+      mutationFn: api.refreshAiFeatures,
+      onSuccess: invalidate,
+    }),
+    trainModel: useMutation({
+      mutationFn: () => api.trainAiModel({ deploy: true }),
+      onSuccess: invalidate,
+    }),
+    scoreSubscribers: useMutation({
+      mutationFn: api.scoreAiSubscribers,
+      onSuccess: invalidate,
+    }),
+    runInterventions: useMutation({
+      mutationFn: api.runAiInterventions,
+      onSuccess: invalidate,
+    }),
+    runPipeline: useMutation({
+      mutationFn: api.runAiPipeline,
+      onSuccess: invalidate,
+    }),
+    updateSettings: useMutation({
+      mutationFn: api.updateAiSettings,
+      onSuccess: invalidate,
+    }),
+  };
+}

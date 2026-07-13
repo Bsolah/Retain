@@ -8,6 +8,7 @@ import mercurius from 'mercurius';
 import { env } from './env.js';
 import { connectRedis, disconnectRedis, getRedis } from './lib/redis.js';
 import { drainQueues } from './lib/shutdown.js';
+import { registerAiRoutes } from './routes/ai.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerCancelFlowRoutes } from './routes/cancel-flow.js';
 import { registerDunningRoutes } from './routes/dunning.js';
@@ -154,6 +155,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
   await registerAnalyticsRoutes(app);
+  await registerAiRoutes(app);
   await registerManualSubscriptionRoutes(app);
   await registerPortalAuthRoutes(app);
   await registerPortalApiRoutes(app);

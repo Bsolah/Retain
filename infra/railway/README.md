@@ -122,6 +122,8 @@ ENABLE_SCHEDULER=true
 
 Set `ENABLE_SCHEDULER=true` only after Postgres and Redis are linked. Until then, leave it unset (or `false`) so Railway healthchecks pass.
 
+With the scheduler on, retain-ai runs the **daily pipeline** at 02:00 UTC: feature refresh → churn scoring (writes `predicted_churn_*` / `churn_risk_score`) → auto-interventions. Merchants can also trigger the same steps from **Admin → AI Performance**. Confirm `AI_SERVICE_URL` on the API service points at retain-ai.
+
 ## 4. Shopify
 
 After domains are live:

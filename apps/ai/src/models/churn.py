@@ -100,6 +100,8 @@ class ChurnPredictor:
                     "positive_samples": positive_samples,
                     "model_type": "baseline",
                     "model_version": self.model_version,
+                    "featureImportance": self._baseline_feature_importance(),
+                    "featureImportanceEstimated": True,
                 }
             )
             self.metrics = metrics
@@ -152,6 +154,8 @@ class ChurnPredictor:
                 "model_type": "xgboost",
                 "model_version": version,
                 "scale_pos_weight": scale_pos_weight,
+                "featureImportance": self._xgboost_feature_importance(model),
+                "featureImportanceEstimated": False,
             }
         )
 
@@ -264,3 +268,35 @@ class ChurnPredictor:
             "f1": float(f1_score(y_true, preds, zero_division=0)),
             "auc": auc,
         }
+
+    @staticmethod
+    def _baseline_feature_importance() -> list[dict[str, float | str]]:
+        ranked = [
+            "payment_failure_count_30d",
+            "cadence_drift_days",
+            "skip_count_90d",
+            "days_since_last_engagement",
+            "support_ticket_sentiment",
+            "portal_login_count_30d",
+            "pause_count_lifetime",
+            "product_swap_count_30d",
+        ]
+        return [
+            {
+                "feature": feature,
+                "importance": float(round(0.22 - index * 0.02, 3)),
+            }
+            for index, feature in enumerate(ranked)
+        ]
+
+    @staticmethod
+    def _xgboost_feature_importance(model: Any) -> list[dict[str, float | str]]:
+        scores = getattr(model, "feature_importances_", None)
+        if scores is None:
+            return ChurnPredictor._baseline_feature_importance()
+        pairs = [
+            {"feature": feature, "importance": float(score)}
+            for feature, score in zip(FEATURE_COLUMNS, scores, strict=False)
+        ]
+        pairs.sort(key=lambda item: float(item["importance"]), reverse=True)
+        return pairs[:12]

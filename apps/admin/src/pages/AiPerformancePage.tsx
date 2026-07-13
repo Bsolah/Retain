@@ -1,9 +1,12 @@
 import {
   Banner,
   BlockStack,
+  Button,
   Card,
+  Checkbox,
   DataTable,
   InlineGrid,
+  InlineStack,
   Page,
   Select,
   Spinner,
@@ -23,7 +26,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { useAiPerformance } from '../hooks/useAnalytics';
+import {
+  useAiActions,
+  useAiPerformance,
+  useAiStatus,
+} from '../hooks/useAnalytics';
 
 const METRIC_EXPLANATIONS: Record<string, string> = {
   Precision:
@@ -36,8 +43,12 @@ const METRIC_EXPLANATIONS: Record<string, string> = {
 
 export function AiPerformancePage() {
   const { data, isLoading, isError, error, refetch } = useAiPerformance();
+  const statusQuery = useAiStatus();
+  const actions = useAiActions();
   const [versionA, setVersionA] = useState('');
   const [versionB, setVersionB] = useState('');
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const historyOptions = useMemo(
     () => [
@@ -62,15 +73,134 @@ export function AiPerformancePage() {
       ]
     : [];
 
+  const runAction = async (label: string, runner: () => Promise<unknown>) => {
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      await runner();
+      setActionMessage(`${label} completed.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : `${label} failed`);
+    }
+  };
+
+  const aiStatus = statusQuery.data?.status ?? 'unknown';
+  const statusTone =
+    aiStatus === 'ok'
+      ? 'success'
+      : aiStatus === 'degraded'
+        ? 'warning'
+        : 'critical';
+
   return (
     <Page title="AI performance">
       <BlockStack gap="400">
         <Banner tone="info" title="What this page tells you">
           <p>
-            Use this page to understand whether Retain AI is accurately spotting
-            churn risk and whether AI-driven interventions are saving revenue.
+            Use this page to train and score churn risk, run interventions, and
+            verify whether Retain AI is saving revenue.
           </p>
         </Banner>
+
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack align="space-between" blockAlign="center">
+              <Text as="h3" variant="headingMd">
+                AI service controls
+              </Text>
+              {statusQuery.isLoading ? (
+                <Spinner size="small" />
+              ) : (
+                <Banner tone={statusTone} title={`Status: ${aiStatus}`}>
+                  <p>
+                    {statusQuery.data?.ai.livenessError ??
+                      statusQuery.data?.ai.featuresError ??
+                      (statusQuery.data?.lastPipelineRun?.ran_at
+                        ? `Last pipeline: ${new Date(statusQuery.data.lastPipelineRun.ran_at).toLocaleString()}`
+                        : 'No pipeline run recorded yet.')}
+                  </p>
+                </Banner>
+              )}
+            </InlineStack>
+
+            <Checkbox
+              label="Enable automatic AI interventions"
+              checked={
+                statusQuery.data?.settings.autoInterventionsEnabled !== false
+              }
+              onChange={(checked) =>
+                void runAction('Settings update', () =>
+                  actions.updateSettings.mutateAsync({
+                    autoInterventionsEnabled: checked,
+                  }),
+                )
+              }
+              disabled={actions.updateSettings.isPending}
+            />
+
+            <InlineStack gap="200" wrap>
+              <Button
+                loading={actions.refreshFeatures.isPending}
+                onClick={() =>
+                  void runAction('Feature refresh', () =>
+                    actions.refreshFeatures.mutateAsync(),
+                  )
+                }
+              >
+                Refresh features
+              </Button>
+              <Button
+                loading={actions.trainModel.isPending}
+                onClick={() =>
+                  void runAction('Model training', () =>
+                    actions.trainModel.mutateAsync(),
+                  )
+                }
+              >
+                Train model
+              </Button>
+              <Button
+                loading={actions.scoreSubscribers.isPending}
+                onClick={() =>
+                  void runAction('Subscriber scoring', () =>
+                    actions.scoreSubscribers.mutateAsync(),
+                  )
+                }
+              >
+                Score subscribers
+              </Button>
+              <Button
+                loading={actions.runInterventions.isPending}
+                onClick={() =>
+                  void runAction('Intervention run', () =>
+                    actions.runInterventions.mutateAsync(),
+                  )
+                }
+              >
+                Run interventions
+              </Button>
+              <Button
+                variant="primary"
+                loading={actions.runPipeline.isPending}
+                onClick={() =>
+                  void runAction('Full pipeline', () =>
+                    actions.runPipeline.mutateAsync(),
+                  )
+                }
+              >
+                Run full pipeline
+              </Button>
+            </InlineStack>
+
+            {actionMessage ? (
+              <Banner tone="success">{actionMessage}</Banner>
+            ) : null}
+            {actionError ? (
+              <Banner tone="critical">{actionError}</Banner>
+            ) : null}
+          </BlockStack>
+        </Card>
+
         {isLoading ? <Spinner accessibilityLabel="Loading AI metrics" /> : null}
         {isError ? (
           <Banner
@@ -141,9 +271,9 @@ export function AiPerformancePage() {
         ) : (
           <Banner tone="info" title="No trained model yet">
             <p>
-              No model is currently available for this store. Once a model is
-              trained and deployed, this section will show quality scores
-              (precision, recall, F1, AUC).
+              No model is currently available for this store. Click{' '}
+              <strong>Train model</strong> (or Run full pipeline) after you have
+              subscription history. Baseline models work with small datasets.
             </p>
           </Banner>
         )}
@@ -158,17 +288,24 @@ export function AiPerformancePage() {
                 Success rate shows the share of sent interventions that were
                 accepted.
               </Text>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <BarChart data={data?.interventionSuccess ?? []}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="type" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="successRate" fill="#059669" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              {(data?.interventionSuccess?.length ?? 0) > 0 ? (
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={data?.interventionSuccess ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="type" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="successRate" fill="#059669" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <Banner tone="info">
+                  No interventions yet. Score subscribers, then run
+                  interventions for at-risk contracts.
+                </Banner>
+              )}
             </BlockStack>
           </Card>
 
@@ -178,22 +315,30 @@ export function AiPerformancePage() {
                 What the model pays most attention to
               </Text>
               <Text as="p" tone="subdued" variant="bodySm">
-                These factors have the strongest impact on churn predictions.
+                {data?.featureImportanceEstimated
+                  ? 'Estimated importance from the baseline model heuristics.'
+                  : 'These factors have the strongest impact on churn predictions.'}
               </Text>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <BarChart
-                    layout="vertical"
-                    data={data?.featureImportance ?? []}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="feature" width={160} />
-                    <Tooltip />
-                    <Bar dataKey="importance" fill="#4f46e5" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              {(data?.featureImportance?.length ?? 0) > 0 ? (
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer>
+                    <BarChart
+                      layout="vertical"
+                      data={data?.featureImportance ?? []}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis type="category" dataKey="feature" width={160} />
+                      <Tooltip />
+                      <Bar dataKey="importance" fill="#4f46e5" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <Banner tone="info">
+                  Train a model to see feature importance.
+                </Banner>
+              )}
             </BlockStack>
           </Card>
         </InlineGrid>
@@ -221,16 +366,22 @@ export function AiPerformancePage() {
               Track which model is live, when it was created, and rollout
               percentage.
             </Text>
-            <DataTable
-              columnContentTypes={['text', 'text', 'numeric', 'text']}
-              headings={['Model version', 'Live now', 'Rollout %', 'Created']}
-              rows={(data?.modelHistory ?? []).map((model) => [
-                model.version,
-                model.isActive ? 'Yes' : 'No',
-                model.rolloutPercentage,
-                new Date(model.createdAt).toLocaleString(),
-              ])}
-            />
+            {(data?.modelHistory?.length ?? 0) > 0 ? (
+              <DataTable
+                columnContentTypes={['text', 'text', 'numeric', 'text']}
+                headings={['Model version', 'Live now', 'Rollout %', 'Created']}
+                rows={(data?.modelHistory ?? []).map((model) => [
+                  model.version,
+                  model.isActive ? 'Yes' : 'No',
+                  model.rolloutPercentage,
+                  new Date(model.createdAt).toLocaleString(),
+                ])}
+              />
+            ) : (
+              <Text as="p" tone="subdued">
+                No models registered yet.
+              </Text>
+            )}
           </BlockStack>
         </Card>
 

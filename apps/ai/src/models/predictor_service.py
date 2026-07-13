@@ -124,23 +124,27 @@ async def _persist_prediction(
             """
             UPDATE subscriber_signals
             SET predicted_churn_30d = $2,
-                model_version = $3,
+                predicted_churn_14d = $3,
+                model_version = $4,
                 calculated_at = NOW()
             WHERE contract_id = $1
             """,
             contract_id,
             prediction["churn_probability"],
+            min(1.0, float(prediction["churn_probability"]) * 0.85),
             prediction["model_version"],
         )
         await conn.execute(
             """
             UPDATE subscription_contracts
             SET predicted_churn_30d = $2,
+                predicted_churn_14d = $3,
                 churn_risk_score = $2,
-                health_status = $3::"HealthStatus"
+                health_status = $4::"HealthStatus"
             WHERE id = $1
             """,
             contract_id,
             prediction["churn_probability"],
+            min(1.0, float(prediction["churn_probability"]) * 0.85),
             health,
         )

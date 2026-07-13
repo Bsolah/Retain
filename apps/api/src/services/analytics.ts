@@ -1159,21 +1159,12 @@ export async function getAiPerformance(shopId: string) {
 
   const modelMetrics = (active?.metrics ?? {}) as Record<string, unknown>;
   const storedImportance = modelMetrics.featureImportance;
+  const featureImportanceEstimated =
+    modelMetrics.featureImportanceEstimated === true ||
+    !Array.isArray(storedImportance);
   const featureImportance = Array.isArray(storedImportance)
     ? (storedImportance as Array<{ feature: string; importance: number }>)
-    : [
-        'payment_failure_count_30d',
-        'cadence_drift_days',
-        'skip_count_90d',
-        'days_since_last_engagement',
-        'support_ticket_sentiment',
-        'portal_login_count_30d',
-        'pause_count_lifetime',
-        'product_swap_count_30d',
-      ].map((feature, index) => ({
-        feature,
-        importance: Number((0.22 - index * 0.02).toFixed(3)),
-      }));
+    : [];
 
   return {
     activeModel: active
@@ -1202,6 +1193,7 @@ export async function getAiPerformance(shopId: string) {
     })),
     revenueSaved: Number(revenueSaved._sum.revenueImpact ?? 0),
     featureImportance,
+    featureImportanceEstimated,
     modelHistory: models.map((model) => ({
       version: model.version,
       isActive: model.isActive,

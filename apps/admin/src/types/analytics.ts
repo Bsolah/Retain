@@ -180,6 +180,7 @@ export type AiPerformance = {
   }>;
   revenueSaved: number;
   featureImportance: Array<{ feature: string; importance: number }>;
+  featureImportanceEstimated?: boolean;
   modelHistory: Array<{
     version: string;
     isActive: boolean;
@@ -188,4 +189,33 @@ export type AiPerformance = {
     createdAt: string;
     path: string;
   }>;
+};
+
+export type AiStatus = {
+  status: 'ok' | 'degraded' | 'down' | string;
+  ai: {
+    liveness: { status: string; timestamp?: string } | null;
+    livenessError: string | null;
+    featuresHealth: {
+      status: string;
+      database: string;
+      redis: string;
+    } | null;
+    featuresError: string | null;
+  };
+  lastPipelineRun: {
+    ran_at?: string;
+    shops_processed?: number;
+    contracts_scored?: number;
+    interventions_created?: number;
+    processing_time_ms?: number;
+  } | null;
+  activeModel: {
+    version: string;
+    rolloutPercentage: number;
+    createdAt: string;
+  } | null;
+  settings: {
+    autoInterventionsEnabled: boolean;
+  };
 };

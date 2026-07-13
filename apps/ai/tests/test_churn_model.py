@@ -63,7 +63,11 @@ def test_train_uses_baseline_when_insufficient_samples() -> None:
     assert metrics["model_type"] == "baseline"
     assert "precision" in metrics
     assert "auc" in metrics
-
+    assert isinstance(metrics["featureImportance"], list)
+    assert len(metrics["featureImportance"]) > 0
+    assert metrics["featureImportanceEstimated"] is True
+    assert "feature" in metrics["featureImportance"][0]
+    assert "importance" in metrics["featureImportance"][0]
 
 @pytest.mark.skipif(not _xgboost_available(), reason="xgboost/libomp unavailable")
 def test_train_xgboost_and_predict_batch(tmp_path: Path) -> None:

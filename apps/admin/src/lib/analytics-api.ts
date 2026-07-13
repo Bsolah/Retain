@@ -2,6 +2,7 @@ import { ApiError } from './api';
 import { getShopDomain, resolveApiUrl, setSession } from './session';
 import type {
   AiPerformance,
+  AiStatus,
   CohortRow,
   DashboardOverview,
   DateRangeKey,
@@ -175,6 +176,58 @@ export async function createManualIntervention(
 
 export async function fetchAiPerformance(): Promise<AiPerformance> {
   return adminFetch('/admin/analytics/ai');
+}
+
+export async function fetchAiStatus(): Promise<AiStatus> {
+  return adminFetch('/admin/ai/status');
+}
+
+export async function updateAiSettings(input: {
+  autoInterventionsEnabled: boolean;
+}): Promise<{ autoInterventionsEnabled: boolean }> {
+  return adminFetch('/admin/ai/settings', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function refreshAiFeatures() {
+  return adminFetch('/admin/ai/features/refresh', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function trainAiModel(input?: {
+  retrainAll?: boolean;
+  deploy?: boolean;
+  rolloutPercentage?: number;
+}) {
+  return adminFetch('/admin/ai/models/train', {
+    method: 'POST',
+    body: JSON.stringify(input ?? { deploy: true }),
+  });
+}
+
+export async function scoreAiSubscribers() {
+  return adminFetch('/admin/ai/score', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function runAiInterventions() {
+  return adminFetch('/admin/ai/interventions/run', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export async function runAiPipeline() {
+  return adminFetch('/admin/ai/pipeline/run', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }
 
 export function downloadCsv(filename: string, rows: Record<string, unknown>[]) {

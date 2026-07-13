@@ -379,20 +379,38 @@ class InterventionEngine:
         outcome: str,
     ) -> dict[str, Any]:
         async with self.pool.acquire() as conn:
+            revenue_impact = None
+            if outcome == "saved":
+                revenue_row = await conn.fetchrow(
+                    """
+                    SELECT COALESCE(c.total_revenue, cust.lifetime_value, 0) AS impact
+                    FROM interventions i
+                    JOIN subscription_contracts c ON c.id = i.contract_id
+                    JOIN customers cust ON cust.id = c.customer_id
+                    WHERE i.id = $1
+                    """,
+                    intervention_id,
+                )
+                if revenue_row is not None:
+                    revenue_impact = float(revenue_row["impact"] or 0)
+
             row = await conn.fetchrow(
                 """
                 UPDATE interventions
                 SET status = $2::"InterventionStatus",
                     outcome = $3::"InterventionOutcome",
+                    revenue_impact = COALESCE($4, revenue_impact),
                     responded_at = NOW(),
                     updated_at = NOW()
                 WHERE id = $1
                 RETURNING id, shop_id, contract_id, intervention_type, status,
-                          outcome, responded_at, offer_value, message_subject
+                          outcome, responded_at, offer_value, message_subject,
+                          revenue_impact
                 """,
                 intervention_id,
                 status,
                 outcome,
+                revenue_impact,
             )
         if row is None:
             raise ValueError(f"Intervention not found: {intervention_id}")
@@ -402,7 +420,11 @@ class InterventionEngine:
             contract_id=row["contract_id"],
             event_type=f"intervention.{status}",
             event_subtype=row["intervention_type"],
-            payload={"intervention_id": intervention_id, "outcome": outcome},
+            payload={
+                "intervention_id": intervention_id,
+                "outcome": outcome,
+                "revenue_impact": revenue_impact,
+            },
         )
         return self._row_to_dict(row)
 

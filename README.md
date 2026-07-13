@@ -147,11 +147,12 @@ packages/
 
 ## AI feature engineering & churn model
 
-The AI service (`apps/ai`, port **8000**) builds churn-prediction feature vectors and trains an XGBoost model.
+The AI service (`apps/ai`, port **8000**) builds churn-prediction feature vectors and trains an XGBoost model. The Node API proxies merchant actions through `/admin/ai/*`.
 
 - `src/features/engineer.py` — `FeatureEngineer.generate_features` / `generate_batch_features`
-- `src/jobs/daily_features.py` — daily batch (APScheduler **02:00 UTC**) upserts `subscriber_signals`
-- `src/models/churn.py` — `ChurnPredictor` (XGBoost, baseline fallback when under 1000 samples)
+- `src/jobs/daily_features.py` — per-shop feature upsert into `subscriber_signals`
+- `src/jobs/daily_pipeline.py` — **features → score → auto-intervene** (APScheduler **02:00 UTC** when `ENABLE_SCHEDULER=true`)
+- `src/models/churn.py` — `ChurnPredictor` (XGBoost, baseline fallback when under 1000 samples; stores `featureImportance` in metrics)
 - `src/jobs/train_model.py` — extract labels, engineer features, validate, register, deploy
 - Endpoints:
   - Features: `POST /features/generate`, `GET /features/{contract_id}`, `GET /features/health`
@@ -159,12 +160,19 @@ The AI service (`apps/ai`, port **8000**) builds churn-prediction feature vector
   - Predictions: `GET /predictions/{contract_id}`, `POST /predictions/batch`
   - Interventions: `POST /interventions/evaluate`, `POST /interventions/evaluate-batch`,
     `GET /interventions/{id}/status`, `POST /interventions/{id}/accept|decline`
+  - Pipeline: `POST /pipeline/run`, `GET /pipeline/last`
+
+**Admin AI Performance** (`/ai`) can refresh features, train, score, run interventions, toggle `auto_interventions_enabled`, and run the full pipeline.
 
 Auto-interventions respect `shop.settings.auto_interventions_enabled` (default true),
 skip when a pending intervention exists, and rate-limit to 3 per contract per 30 days.
 Email/SMS use SendGrid/Twilio when configured; otherwise delivery is dry-run.
+Accepted interventions set `revenue_impact` from contract/customer totals for “revenue saved”.
 
 Artifacts default to `models/churn/{version}.joblib` (`MODELS_URI_PREFIX`). Set `MODELS_URI_PREFIX=s3://models/churn` for S3. Apply Prisma migrations for `feature_vector` and `model_registry`.
+
+**Env (API):** `AI_SERVICE_URL` must point at the AI service.  
+**Env (AI):** `DATABASE_URL`, `REDIS_URL`, `ENABLE_SCHEDULER=true` only after DB/Redis are linked.
 
 ## Customer portal
 
