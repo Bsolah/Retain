@@ -11,6 +11,7 @@ export type MigrationSyncJob = {
 export type MigrationCutoverJob = {
   migrationId: string;
   shopId: string;
+  cancelSourceOnCutover?: boolean;
 };
 
 export const MIGRATION_ROLLBACK_WINDOW_MS = 48 * 60 * 60 * 1000;

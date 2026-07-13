@@ -117,4 +117,33 @@ export const rechargeAdapter: PlatformAdapter = {
 
     return { customers, contracts, totalRevenue };
   },
+
+  async cancelSubscription(credentials, sourceId) {
+    if (!credentials.apiKey) {
+      throw new Error(
+        'Recharge API key is required to cancel source subscriptions',
+      );
+    }
+
+    const response = await fetch(
+      `https://api.rechargeapps.com/subscriptions/${sourceId}/cancel`,
+      {
+        method: 'POST',
+        headers: {
+          'X-Recharge-Access-Token': credentials.apiKey,
+          'X-Recharge-Version': '2021-11',
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cancellation_reason: 'Migrated to Retain',
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Recharge cancel failed ${response.status}: ${body}`);
+    }
+  },
 };

@@ -39,7 +39,9 @@ export function startMigrationWorkers(): void {
         where: { id: job.data.shopId },
       });
       if (!shop) throw new Error('Shop not found for migration cutover');
-      await runMigrationCutover(shop, job.data.migrationId);
+      await runMigrationCutover(shop, job.data.migrationId, {
+        cancelSourceOnCutover: job.data.cancelSourceOnCutover,
+      });
     },
     { connection: redisConnection() },
   );

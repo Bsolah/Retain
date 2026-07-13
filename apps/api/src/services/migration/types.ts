@@ -41,6 +41,11 @@ export type DiscoveryResult = {
 export type PlatformAdapter = {
   platform: MigrationPlatformName;
   discover(credentials: MigrationCredentials): Promise<DiscoveryResult>;
+  /** Cancel / deactivate a source subscription after Retain cutover. */
+  cancelSubscription?(
+    credentials: MigrationCredentials,
+    sourceId: string,
+  ): Promise<void>;
 };
 
 export function estimateDurationMinutes(contractCount: number): number {

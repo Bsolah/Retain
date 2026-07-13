@@ -20,14 +20,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
   cutoverMigration,
-  discoverMigration,
   fetchMigrationErrors,
   fetchMigrations,
   rollbackMigration,
-  startMigrationSync,
   subscribeMigrationProgress,
   updateCommunicationTemplate,
-  validateMigration,
+  validateAndPullMigration,
+  validateMigrationRecord,
 } from '../lib/migration-api';
 import type {
   CommunicationTemplate,
@@ -52,6 +51,7 @@ const STATUS_TONE: Record<
 > = {
   discovered: 'info',
   syncing: 'attention',
+  synced: 'info',
   validated: 'info',
   cutover: 'attention',
   completed: 'success',
@@ -67,7 +67,7 @@ export function MigrationsPage() {
   const [csvData, setCsvData] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [rollbackOpen, setRollbackOpen] = useState(false);
-  const [cancelSource, setCancelSource] = useState(false);
+  const [cancelSource, setCancelSource] = useState(true);
   const [liveProgress, setLiveProgress] = useState<MigrationProgress | null>(
     null,
   );
@@ -97,12 +97,16 @@ export function MigrationsPage() {
   });
 
   useEffect(() => {
-    if (!selectedId || !selected || selected.status !== 'syncing') {
+    if (
+      !selectedId ||
+      !selected ||
+      (selected.status !== 'syncing' && selected.status !== 'cutover')
+    ) {
       setLiveProgress(null);
       return;
     }
     return subscribeMigrationProgress(selectedId, setLiveProgress);
-  }, [selectedId, selected?.status]);
+  }, [selectedId, selected]);
 
   useEffect(() => {
     if (selected?.communicationTemplate) {
@@ -110,9 +114,9 @@ export function MigrationsPage() {
     }
   }, [selected?.communicationTemplate, selectedId]);
 
-  const discoverMutation = useMutation({
+  const validateMutation = useMutation({
     mutationFn: () =>
-      discoverMigration({
+      validateAndPullMigration({
         platform,
         apiKey: apiKey || undefined,
         apiSecret: apiSecret || undefined,
@@ -124,32 +128,16 @@ export function MigrationsPage() {
     },
   });
 
-  const syncMutation = useMutation({
-    mutationFn: (migrationId: string) => startMigrationSync(migrationId),
+  const revalidateMutation = useMutation({
+    mutationFn: (migrationId: string) => validateMigrationRecord(migrationId),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: ['migrations'] }),
   });
 
-  const needsSync =
+  const canCutoff =
     selected != null &&
-    (selected.status === 'discovered' ||
-      selected.status === 'failed' ||
-      (selected.validationReport != null &&
-        !selected.validationReport.passed &&
-        selected.validationReport.syncedContractCount <
-          selected.validationReport.sourceContractCount));
-
-  const canValidate =
-    selected != null &&
-    !needsSync &&
     selected.status === 'validated' &&
-    (selected.progress?.total ?? 0) > 0;
-
-  const validateMutation = useMutation({
-    mutationFn: (migrationId: string) => validateMigration(migrationId),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['migrations'] }),
-  });
+    selected.validationReport?.passed === true;
 
   const cutoverMutation = useMutation({
     mutationFn: (migrationId: string) =>
@@ -183,17 +171,17 @@ export function MigrationsPage() {
       <BlockStack gap="500">
         <Banner tone="info">
           <p>
-            <strong>Zero-downtime workflow:</strong> discover your existing
-            subscribers, sync them into Retain, validate the data, then cut over
-            billing on the next charge date. You can roll back within 48 hours
-            if needed.
+            <strong>Validate</strong> pulls every customer and subscription from
+            the source platform into Retain. <strong>Cutoff</strong> creates
+            live Shopify subscriptions here and optionally cancels them on the
+            source platform.
           </p>
         </Banner>
 
         <Card>
           <BlockStack gap="400">
             <Text as="h2" variant="headingMd">
-              Step 1 — Discover
+              Step 1 — Select platform and validate
             </Text>
             <InlineGrid columns={{ xs: 1, md: 3 }} gap="300">
               <Select
@@ -231,14 +219,26 @@ export function MigrationsPage() {
             ) : null}
             <Button
               variant="primary"
-              loading={discoverMutation.isPending}
-              onClick={() => discoverMutation.mutate()}
+              loading={validateMutation.isPending}
+              onClick={() => validateMutation.mutate()}
             >
-              Run discovery
+              Validate — pull all records
             </Button>
-            {discoverMutation.isError ? (
+            {validateMutation.isError ? (
               <Banner tone="critical">
-                {(discoverMutation.error as Error).message}
+                {(validateMutation.error as Error).message}
+              </Banner>
+            ) : null}
+            {validateMutation.isSuccess ? (
+              <Banner tone="success">
+                Pulled{' '}
+                {validateMutation.data.validationReport.sourceContractCount}{' '}
+                contracts and{' '}
+                {validateMutation.data.validationReport.sourceCustomerCount}{' '}
+                customers.{' '}
+                {validateMutation.data.validationReport.passed
+                  ? 'Validation passed — ready for cutoff.'
+                  : 'Validation found issues — review the report before cutoff.'}
               </Banner>
             ) : null}
           </BlockStack>
@@ -252,7 +252,7 @@ export function MigrationsPage() {
             {migrationsQuery.isLoading ? <Spinner /> : null}
             {migrationsQuery.data?.length === 0 ? (
               <Text as="p" tone="subdued">
-                No migrations yet. Run discovery to get started.
+                No migrations yet. Select a platform and click Validate.
               </Text>
             ) : null}
             {migrationsQuery.data?.map((migration) => (
@@ -280,32 +280,24 @@ export function MigrationsPage() {
                   {progress.failed ?? 0} failed)
                 </Text>
                 <InlineStack gap="200">
-                  {needsSync ? (
+                  {selected.status === 'synced' ||
+                  (selected.status === 'validated' &&
+                    selected.validationReport &&
+                    !selected.validationReport.passed) ? (
                     <Button
-                      variant="primary"
-                      loading={syncMutation.isPending}
-                      onClick={() => syncMutation.mutate(selected.id)}
+                      loading={revalidateMutation.isPending}
+                      onClick={() => revalidateMutation.mutate(selected.id)}
                     >
-                      {selected.status === 'discovered'
-                        ? 'Step 2 — Start sync'
-                        : 'Retry sync'}
+                      Re-run validation
                     </Button>
                   ) : null}
-                  {canValidate ? (
-                    <Button
-                      loading={validateMutation.isPending}
-                      onClick={() => validateMutation.mutate(selected.id)}
-                    >
-                      Step 3 — Validate
-                    </Button>
-                  ) : null}
-                  {selected.status === 'validated' ? (
+                  {canCutoff ? (
                     <Button
                       variant="primary"
                       loading={cutoverMutation.isPending}
                       onClick={() => cutoverMutation.mutate(selected.id)}
                     >
-                      Step 4 — Cutover
+                      Cutoff — create subscriptions &amp; cut source
                     </Button>
                   ) : null}
                   {selected.status === 'completed' ? (
@@ -317,15 +309,21 @@ export function MigrationsPage() {
                     </Button>
                   ) : null}
                 </InlineStack>
-                {syncMutation.isError ? (
+                {cutoverMutation.isError ? (
                   <Banner tone="critical">
-                    {(syncMutation.error as Error).message}
+                    {(cutoverMutation.error as Error).message}
+                  </Banner>
+                ) : null}
+                {revalidateMutation.isError ? (
+                  <Banner tone="critical">
+                    {(revalidateMutation.error as Error).message}
                   </Banner>
                 ) : null}
                 <Checkbox
-                  label="Cancel subscriptions on source platform at cutover"
+                  label="Cancel subscriptions on source platform at cutoff"
                   checked={cancelSource}
                   onChange={setCancelSource}
+                  helpText="Recommended for Recharge. Creates Retain/Shopify subscriptions, then cancels the source."
                 />
               </BlockStack>
             </Card>
@@ -339,6 +337,10 @@ export function MigrationsPage() {
                   <Text as="p">
                     Contracts: {selected.validationReport.syncedContractCount}/
                     {selected.validationReport.sourceContractCount} synced
+                  </Text>
+                  <Text as="p">
+                    Customers: {selected.validationReport.syncedCustomerCount}/
+                    {selected.validationReport.sourceCustomerCount} synced
                   </Text>
                   <Text as="p">
                     Status:{' '}
@@ -441,7 +443,7 @@ export function MigrationsPage() {
             This will cancel all Shopify contracts created by this migration and
             mark the migration as rolled back. Duplicate charges should be
             refunded manually. This action is only available within 48 hours of
-            cutover.
+            cutoff.
           </Text>
         </Modal.Section>
       </Modal>

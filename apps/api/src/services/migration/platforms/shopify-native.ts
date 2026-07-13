@@ -13,101 +13,113 @@ export const shopifySubscriptionsAdapter: PlatformAdapter = {
   },
 };
 
+type ContractNode = {
+  id: string;
+  status: string;
+  nextBillingDate: string | null;
+  createdAt: string;
+  customer: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+  } | null;
+  lines: {
+    edges: Array<{
+      node: {
+        title: string;
+        quantity: number;
+        currentPrice: { amount: string; currencyCode: string };
+        variantId: string | null;
+      };
+    }>;
+  };
+};
+
 export async function discoverFromShop(shop: Shop) {
-  const data = await shopifyAdminGraphql<{
-    subscriptionContracts: {
-      edges: Array<{
-        node: {
-          id: string;
-          status: string;
-          nextBillingDate: string | null;
-          createdAt: string;
-          customer: {
-            id: string;
-            email: string | null;
-            firstName: string | null;
-            lastName: string | null;
-            phone: string | null;
-          } | null;
-          lines: {
-            edges: Array<{
-              node: {
-                title: string;
-                quantity: number;
-                currentPrice: { amount: string; currencyCode: string };
-                variantId: string | null;
-              };
-            }>;
-          };
-        };
-      }>;
-    };
-  }>(
-    shop,
-    `#graphql
-      query MigrationDiscoverContracts($first: Int!) {
-        subscriptionContracts(first: $first) {
-          edges {
-            node {
-              id
-              status
-              nextBillingDate
-              createdAt
-              customer {
+  const customers = new Map<string, ReturnType<typeof mapCustomer>>();
+  const contracts: Awaited<
+    ReturnType<PlatformAdapter['discover']>
+  >['contracts'] = [];
+  let totalRevenue = 0;
+  let cursor: string | null = null;
+
+  for (;;) {
+    const data: {
+      subscriptionContracts: {
+        pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        edges: Array<{ node: ContractNode }>;
+      };
+    } = await shopifyAdminGraphql(
+      shop,
+      `#graphql
+        query MigrationDiscoverContracts($first: Int!, $after: String) {
+          subscriptionContracts(first: $first, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
                 id
-                email
-                firstName
-                lastName
-                phone
-              }
-              lines(first: 10) {
-                edges {
-                  node {
-                    title
-                    quantity
-                    currentPrice { amount currencyCode }
-                    variantId
+                status
+                nextBillingDate
+                createdAt
+                customer {
+                  id
+                  email
+                  firstName
+                  lastName
+                  phone
+                }
+                lines(first: 10) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      currentPrice { amount currencyCode }
+                      variantId
+                    }
                   }
                 }
               }
             }
           }
         }
+      `,
+      { first: 100, after: cursor },
+    );
+
+    for (const edge of data.subscriptionContracts.edges) {
+      const node = edge.node;
+      const customer = node.customer;
+      if (customer?.id) {
+        customers.set(customer.id, mapCustomer(customer));
       }
-    `,
-    { first: 250 },
-  );
 
-  const customers = new Map<string, ReturnType<typeof mapCustomer>>();
-  const contracts: Awaited<
-    ReturnType<PlatformAdapter['discover']>
-  >['contracts'] = [];
-  let totalRevenue = 0;
+      const line = node.lines.edges[0]?.node;
+      const price = Number(line?.currentPrice.amount ?? 0);
+      totalRevenue += price;
 
-  for (const edge of data.subscriptionContracts.edges) {
-    const node = edge.node;
-    const customer = node.customer;
-    if (customer?.id) {
-      customers.set(customer.id, mapCustomer(customer));
+      contracts.push({
+        sourceId: node.id,
+        sourceCustomerId: customer?.id ?? 'unknown',
+        status: node.status,
+        productTitle: line?.title,
+        variantId: line?.variantId ?? undefined,
+        quantity: line?.quantity ?? 1,
+        price,
+        currency: line?.currentPrice.currencyCode ?? 'USD',
+        nextBillingDate: node.nextBillingDate,
+        createdAt: node.createdAt,
+        raw: node as unknown as Record<string, unknown>,
+      });
     }
 
-    const line = node.lines.edges[0]?.node;
-    const price = Number(line?.currentPrice.amount ?? 0);
-    totalRevenue += price;
-
-    contracts.push({
-      sourceId: node.id,
-      sourceCustomerId: customer?.id ?? 'unknown',
-      status: node.status,
-      productTitle: line?.title,
-      variantId: line?.variantId ?? undefined,
-      quantity: line?.quantity ?? 1,
-      price,
-      currency: line?.currentPrice.currencyCode ?? 'USD',
-      nextBillingDate: node.nextBillingDate,
-      createdAt: node.createdAt,
-      raw: node as unknown as Record<string, unknown>,
-    });
+    if (!data.subscriptionContracts.pageInfo.hasNextPage) break;
+    cursor = data.subscriptionContracts.pageInfo.endCursor;
+    if (!cursor) break;
   }
 
   return {

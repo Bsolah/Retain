@@ -124,6 +124,7 @@ enum MigrationPlatform {
 enum MigrationStatus {
   discovered
   syncing
+  synced
   validated
   cutover
   completed

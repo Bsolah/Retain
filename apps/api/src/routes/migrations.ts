@@ -15,6 +15,7 @@ import {
   updateCommunicationTemplate,
 } from '../services/migration/discover.js';
 import { runMigrationRollback } from '../services/migration/cutover.js';
+import { pullAndValidateMigration } from '../services/migration/pull.js';
 import { getMigrationProgress } from '../services/migration/progress.js';
 import {
   retryMigrationRecord,
@@ -108,6 +109,47 @@ export async function registerMigrationRoutes(
     }
   });
 
+  /** Validate = pull all records from the source platform, sync into Retain, then report. */
+  app.post(
+    '/migrations/validate',
+    { preHandler: auth },
+    async (request, reply) => {
+      const req = request as AuthenticatedRequest;
+      const body = request.body as {
+        platform?: string;
+        apiKey?: string;
+        apiSecret?: string;
+        csvData?: string;
+      };
+
+      if (!body.platform || !isPlatform(body.platform)) {
+        return reply.status(400).send({
+          message: `platform must be one of: ${SUPPORTED_MIGRATION_PLATFORMS.join(', ')}`,
+        });
+      }
+
+      try {
+        return await pullAndValidateMigration({
+          shop: req.shop!,
+          platform: body.platform,
+          credentials: {
+            apiKey: body.apiKey,
+            apiSecret: body.apiSecret,
+            csvData: body.csvData,
+          },
+        });
+      } catch (error) {
+        request.log.error({ err: error }, 'Migration validate/pull failed');
+        return reply.status(500).send({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Failed to pull and validate migration',
+        });
+      }
+    },
+  );
+
   app.get<{ Params: { id: string } }>(
     '/migrations/:id',
     { preHandler: auth },
@@ -119,14 +161,20 @@ export async function registerMigrationRoutes(
     },
   );
 
-  app.get<{ Params: { id: string } }>(
+  app.post<{ Params: { id: string } }>(
     '/migrations/:id/validate',
     { preHandler: auth },
     async (request, reply) => {
       const req = request as AuthenticatedRequest;
       const migration = await getMigration(req.shop!.id, request.params.id);
       if (!migration) return reply.status(404).send({ message: 'Not found' });
-      return validateMigration(req.shop!.id, request.params.id);
+      try {
+        return await validateMigration(req.shop!.id, request.params.id);
+      } catch (error) {
+        return reply.status(400).send({
+          message: error instanceof Error ? error.message : 'Validation failed',
+        });
+      }
     },
   );
 
@@ -212,22 +260,31 @@ export async function registerMigrationRoutes(
       if (!migration) return reply.status(404).send({ message: 'Not found' });
 
       const body = (request.body ?? {}) as { cancelSourceOnCutover?: boolean };
+      const cancelSourceOnCutover = Boolean(body.cancelSourceOnCutover);
+
+      const report = migration.validationReport as { passed?: boolean } | null;
+      if (migration.status !== 'validated' || !report?.passed) {
+        return reply.status(400).send({
+          message:
+            'Migration must be validated successfully before cutover. Click Validate first.',
+        });
+      }
+
+      await prisma.migrationJob.update({
+        where: { id: migration.id },
+        data: {
+          settings: {
+            ...(migration.settings as object),
+            cancelSourceOnCutover,
+          },
+        },
+      });
+
       await enqueueMigrationCutover({
         migrationId: migration.id,
         shopId: req.shop!.id,
+        cancelSourceOnCutover,
       });
-
-      if (body.cancelSourceOnCutover) {
-        await prisma.migrationJob.update({
-          where: { id: migration.id },
-          data: {
-            settings: {
-              ...(migration.settings as object),
-              cancelSourceOnCutover: true,
-            },
-          },
-        });
-      }
 
       return { ok: true, status: 'cutover' };
     },

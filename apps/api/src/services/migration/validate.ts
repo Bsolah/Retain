@@ -32,6 +32,16 @@ export async function validateMigration(
   });
   if (!migration) throw new Error('Migration not found');
 
+  if (
+    migration.status !== MigrationStatus.synced &&
+    migration.status !== MigrationStatus.validated &&
+    migration.status !== MigrationStatus.failed
+  ) {
+    throw new Error(
+      `Cannot validate from status: ${migration.status}. Sync the migration first.`,
+    );
+  }
+
   const records = await prisma.migrationRecord.findMany({
     where: { migrationId },
   });

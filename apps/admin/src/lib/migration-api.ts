@@ -79,6 +79,24 @@ export async function discoverMigration(input: {
   });
 }
 
+/** Pull all source records into Retain and return a validation report. */
+export async function validateAndPullMigration(input: {
+  platform: MigrationPlatform;
+  apiKey?: string;
+  apiSecret?: string;
+  csvData?: string;
+}): Promise<{
+  migrationId: string;
+  status: string;
+  preview: MigrationRow['preview'];
+  validationReport: ValidationReport;
+}> {
+  return migrationFetch('/migrations/validate', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function startMigrationSync(
   migrationId: string,
 ): Promise<{ ok: boolean }> {
@@ -94,10 +112,20 @@ export async function fetchMigrationProgress(
   return migrationFetch(`/migrations/${migrationId}/progress`);
 }
 
+export async function validateMigrationRecord(
+  migrationId: string,
+): Promise<ValidationReport> {
+  return migrationFetch(`/migrations/${migrationId}/validate`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+/** @deprecated Use validateMigrationRecord */
 export async function validateMigration(
   migrationId: string,
 ): Promise<ValidationReport> {
-  return migrationFetch(`/migrations/${migrationId}/validate`);
+  return validateMigrationRecord(migrationId);
 }
 
 export async function cutoverMigration(

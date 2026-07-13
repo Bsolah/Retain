@@ -4,6 +4,7 @@ export type MigrationPlatform =
 export type MigrationStatus =
   | 'discovered'
   | 'syncing'
+  | 'synced'
   | 'validated'
   | 'cutover'
   | 'completed'
