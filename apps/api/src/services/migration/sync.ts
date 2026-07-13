@@ -429,7 +429,7 @@ export async function runMigrationSync(
   const nextStatus =
     failed > 0 && completed === 0
       ? MigrationStatus.failed
-      : MigrationStatus.synced;
+      : MigrationStatus.syncing;
 
   await prisma.migrationJob.update({
     where: { id: migrationId },
@@ -440,8 +440,9 @@ export async function runMigrationSync(
         completed,
         failed,
         percent: calculatePercent(completed, total),
+        syncComplete: nextStatus === MigrationStatus.syncing,
         currentStep:
-          nextStatus === MigrationStatus.synced
+          nextStatus === MigrationStatus.syncing
             ? 'Sync complete — ready to validate'
             : 'Sync failed',
       } as object,

@@ -32,11 +32,18 @@ export async function validateMigration(
   });
   if (!migration) throw new Error('Migration not found');
 
-  if (
-    migration.status !== MigrationStatus.synced &&
-    migration.status !== MigrationStatus.validated &&
-    migration.status !== MigrationStatus.failed
-  ) {
+  const progress = (migration.progress ?? {}) as {
+    syncComplete?: boolean;
+    percent?: number;
+  };
+  const readyToValidate =
+    migration.status === MigrationStatus.synced ||
+    migration.status === MigrationStatus.validated ||
+    migration.status === MigrationStatus.failed ||
+    (migration.status === MigrationStatus.syncing &&
+      (progress.syncComplete === true || progress.percent === 100));
+
+  if (!readyToValidate) {
     throw new Error(
       `Cannot validate from status: ${migration.status}. Sync the migration first.`,
     );

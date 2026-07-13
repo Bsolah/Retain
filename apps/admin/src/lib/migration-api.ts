@@ -131,7 +131,7 @@ export async function validateMigration(
 export async function cutoverMigration(
   migrationId: string,
   cancelSourceOnCutover = false,
-): Promise<{ ok: boolean }> {
+): Promise<{ ok: boolean; status: string; progress?: MigrationProgress }> {
   return migrationFetch(`/migrations/${migrationId}/cutover`, {
     method: 'POST',
     body: JSON.stringify({ cancelSourceOnCutover }),

@@ -137,7 +137,8 @@ export function MigrationsPage() {
   const canCutoff =
     selected != null &&
     selected.status === 'validated' &&
-    selected.validationReport?.passed === true;
+    (selected.validationReport?.passed === true ||
+      (selected.validationReport?.syncedContractCount ?? 0) > 0);
 
   const cutoverMutation = useMutation({
     mutationFn: (migrationId: string) =>
@@ -281,6 +282,7 @@ export function MigrationsPage() {
                 </Text>
                 <InlineStack gap="200">
                   {selected.status === 'synced' ||
+                  selected.status === 'syncing' ||
                   (selected.status === 'validated' &&
                     selected.validationReport &&
                     !selected.validationReport.passed) ? (
@@ -309,6 +311,12 @@ export function MigrationsPage() {
                     </Button>
                   ) : null}
                 </InlineStack>
+                {cutoverMutation.isSuccess ? (
+                  <Banner tone="success">
+                    Cutoff finished. Status: {cutoverMutation.data.status}.
+                    Check Errors if any source cancels or contracts failed.
+                  </Banner>
+                ) : null}
                 {cutoverMutation.isError ? (
                   <Banner tone="critical">
                     {(cutoverMutation.error as Error).message}

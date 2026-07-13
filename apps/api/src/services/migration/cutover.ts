@@ -361,9 +361,15 @@ export async function runMigrationCutover(
     );
   }
 
-  const report = migration.validationReport as { passed?: boolean } | null;
-  if (!report?.passed) {
-    throw new Error('Cannot cutover until validation passes');
+  const report = migration.validationReport as {
+    passed?: boolean;
+    syncedContractCount?: number;
+  } | null;
+  const hasSyncedContracts = (report?.syncedContractCount ?? 0) > 0;
+  if (!report || (!report.passed && !hasSyncedContracts)) {
+    throw new Error(
+      'Cannot cutover until validation has synced contracts to migrate',
+    );
   }
 
   const settings = (migration.settings ?? {}) as {
@@ -440,7 +446,24 @@ export async function runMigrationCutover(
       }
 
       if (cancelSource && adapter?.cancelSubscription) {
-        await adapter.cancelSubscription(credentials, contract.sourceId);
+        try {
+          await adapter.cancelSubscription(credentials, contract.sourceId);
+        } catch (cancelError) {
+          const cancelMessage =
+            cancelError instanceof Error
+              ? cancelError.message
+              : 'Failed to cancel source subscription';
+          await prisma.migrationError.create({
+            data: {
+              migrationId,
+              recordId: record.id,
+              code: 'SOURCE_CANCEL_FAILED',
+              message: cancelMessage,
+              requiresManualAction: true,
+              details: { sourceId: contract.sourceId },
+            },
+          });
+        }
       }
 
       await prisma.migrationRecord.update({

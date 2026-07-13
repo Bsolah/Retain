@@ -7,14 +7,16 @@ import {
   createSessionPreHandler,
   type AuthenticatedRequest,
 } from '../middleware/session.js';
-import { enqueueMigrationCutover } from '../lib/migration-queues.js';
 import {
   discoverMigration,
   getMigration,
   listMigrations,
   updateCommunicationTemplate,
 } from '../services/migration/discover.js';
-import { runMigrationRollback } from '../services/migration/cutover.js';
+import {
+  runMigrationCutover,
+  runMigrationRollback,
+} from '../services/migration/cutover.js';
 import { pullAndValidateMigration } from '../services/migration/pull.js';
 import { getMigrationProgress } from '../services/migration/progress.js';
 import {
@@ -262,11 +264,19 @@ export async function registerMigrationRoutes(
       const body = (request.body ?? {}) as { cancelSourceOnCutover?: boolean };
       const cancelSourceOnCutover = Boolean(body.cancelSourceOnCutover);
 
-      const report = migration.validationReport as { passed?: boolean } | null;
-      if (migration.status !== 'validated' || !report?.passed) {
+      const report = migration.validationReport as {
+        passed?: boolean;
+        syncedContractCount?: number;
+      } | null;
+      const hasSyncedContracts = (report?.syncedContractCount ?? 0) > 0;
+      if (
+        migration.status !== 'validated' ||
+        !report ||
+        (!report.passed && !hasSyncedContracts)
+      ) {
         return reply.status(400).send({
           message:
-            'Migration must be validated successfully before cutover. Click Validate first.',
+            'Migration must be validated with synced contracts before cutoff. Click Validate first.',
         });
       }
 
@@ -280,13 +290,27 @@ export async function registerMigrationRoutes(
         },
       });
 
-      await enqueueMigrationCutover({
-        migrationId: migration.id,
-        shopId: req.shop!.id,
-        cancelSourceOnCutover,
-      });
-
-      return { ok: true, status: 'cutover' };
+      try {
+        // Run cutover in-request so merchants see success/failure immediately.
+        await runMigrationCutover(req.shop!, migration.id, {
+          cancelSourceOnCutover,
+        });
+        const updated = await getMigration(req.shop!.id, migration.id);
+        return {
+          ok: true,
+          status: updated?.status ?? 'completed',
+          progress: updated?.progress ?? {},
+        };
+      } catch (error) {
+        request.log.error(
+          { err: error, migrationId: migration.id },
+          'Migration cutover failed',
+        );
+        return reply.status(500).send({
+          message:
+            error instanceof Error ? error.message : 'Migration cutover failed',
+        });
+      }
     },
   );
 
