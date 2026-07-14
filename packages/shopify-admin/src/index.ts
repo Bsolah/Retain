@@ -16,6 +16,7 @@ export {
 } from './contract-sync.js';
 export {
   completePendingSubscriptionOrderPayment,
+  ensureContractPaymentMethod,
   isOrderPaymentWebhookPaid,
   normalizeShopifyOrderGid,
   reconcileContractPaymentStatus,

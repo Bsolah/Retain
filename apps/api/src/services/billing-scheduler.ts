@@ -8,6 +8,7 @@ import {
 } from '@retain/database';
 import {
   computeNextBillingDateFromPolicy,
+  ensureContractPaymentMethod,
   hasBillingInterval,
   reconcilePendingSubscriptionOrderPayment,
 } from '@retain/shopify-admin';
@@ -338,12 +339,14 @@ function initialNextBillingDate(contract: {
   );
 }
 
-/** Backfill missing nextBillingDate on active contracts. */
+/** Backfill missing nextBillingDate on active contracts that are already billing. */
 export async function reconcileBillingSchedules(): Promise<number> {
   const rows = await prisma.subscriptionContract.findMany({
     where: {
       status: ContractStatus.active,
       nextBillingDate: null,
+      // Do not invent a schedule while the first payment-link invoice is unpaid.
+      totalCharges: { gt: 0 },
     },
     select: {
       id: true,
@@ -410,7 +413,11 @@ export async function processDueBillings(referenceDate = new Date()): Promise<{
 
   const dueContracts = await prisma.subscriptionContract.findMany({
     where: {
-      status: ContractStatus.active,
+      status: {
+        in: [ContractStatus.active, ContractStatus.payment_failed],
+      },
+      // Fake migration stubs cannot bill on Shopify.
+      NOT: { shopifyContractId: { contains: '/migrated-' } },
       OR: [{ nextBillingDate: { lte: end } }, { nextBillingDate: null }],
     },
     select: { id: true },
@@ -518,6 +525,13 @@ export async function attemptBilling(
     return 'skipped';
   }
 
+  if (contract.shopifyContractId.includes('/migrated-')) {
+    console.warn(
+      `Skipping billing for migrated stub contract ${contract.id} (${contract.shopifyContractId})`,
+    );
+    return 'skipped';
+  }
+
   // Wait for payment-link first invoice before scheduling renewals.
   if (contract.totalCharges === 0) {
     const pendingOrder = await prisma.subscriptionOrder.findFirst({
@@ -546,6 +560,10 @@ export async function attemptBilling(
         },
       );
       return completed ? 'success' : 'skipped';
+    }
+    // No pending invoice and never charged — cannot invent a renewal yet.
+    if (!contract.nextBillingDate && !options?.bypassSchedule) {
+      return 'skipped';
     }
   }
 
@@ -576,18 +594,73 @@ export async function attemptBilling(
       contract.shop,
       contract.lastBillingAttemptId,
     );
-    if (pending?.order) {
+
+    if (pending?.errorMessage || pending?.errorCode) {
+      // Prior attempt failed — clear sticky id so a new cycle can charge.
+      await prisma.subscriptionContract.update({
+        where: { id: contract.id },
+        data: { lastBillingAttemptId: null },
+      });
+    } else if (pending?.order) {
       const existingOrder = await prisma.subscriptionOrder.findFirst({
         where: {
           shopId: contract.shopId,
           shopifyOrderId: pending.order.id,
         },
+        include: { contract: true },
       });
-      if (existingOrder) {
-        return 'skipped';
+
+      if (!existingOrder) {
+        await completeSuccessfulBilling(contract, pending, options);
+        return 'success';
       }
-      await completeSuccessfulBilling(contract, pending, options);
-      return 'success';
+
+      if (
+        existingOrder.status === OrderStatus.pending &&
+        existingOrder.contract
+      ) {
+        const completed = await reconcilePendingSubscriptionOrderPayment(
+          contract.shop,
+          {
+            id: existingOrder.id,
+            contractId: existingOrder.contractId,
+            customerId: existingOrder.customerId,
+            shopifyOrderId: existingOrder.shopifyOrderId,
+            totalPrice: existingOrder.totalPrice,
+            status: existingOrder.status,
+            contract: {
+              id: existingOrder.contract.id,
+              shopifyContractId: existingOrder.contract.shopifyContractId,
+              billingPolicy: existingOrder.contract.billingPolicy,
+              totalCharges: existingOrder.contract.totalCharges,
+            },
+          },
+        );
+        return completed ? 'success' : 'skipped';
+      }
+
+      // This attempt already produced a local order (typically the first
+      // payment-link invoice). Clear sticky state and continue so the next
+      // cycle can create a NEW Shopify billing attempt / order.
+      const orderAlreadyBooked =
+        existingOrder.status === OrderStatus.paid ||
+        (contract.lastOrderId != null &&
+          contract.lastOrderId === pending.order.id) ||
+        contract.totalCharges > 0;
+
+      if (orderAlreadyBooked) {
+        await prisma.subscriptionContract.update({
+          where: { id: contract.id },
+          data: { lastBillingAttemptId: null },
+        });
+        contract.lastBillingAttemptId = null;
+      } else {
+        await completeSuccessfulBilling(contract, pending, options);
+        return 'success';
+      }
+    } else if (pending && pending.ready === false) {
+      // Shopify is still processing this attempt.
+      return 'skipped';
     }
   }
 
@@ -599,19 +672,27 @@ export async function attemptBilling(
     return 'skipped';
   }
 
-  // Redis-free DB guard: if we already stored today's attempt id pattern.
-  const existingAttempt = await prisma.subscriptionContract.findFirst({
+  // Redis-free DB guard: if we already billed successfully today, don't retry.
+  const billedToday = await prisma.subscriptionContract.findFirst({
     where: {
       id: contract.id,
-      lastBillingAttemptId: { not: null },
       lastBillingDate: {
         gte: startOfUtcDay(),
         lte: endOfUtcDay(),
       },
+      totalCharges: { gt: 0 },
     },
   });
-  if (existingAttempt && !options?.bypassSchedule) {
+  if (billedToday && !options?.bypassSchedule) {
     return 'skipped';
+  }
+
+  // Renewals require a vaulted payment method on the Shopify contract.
+  if (contract.totalCharges > 0 || contract.lastBillingDate) {
+    await ensureContractPaymentMethod(
+      contract.shop,
+      contract.shopifyContractId,
+    );
   }
 
   const originTime = new Date().toISOString();
@@ -718,5 +799,5 @@ async function markPaymentFailed(
     source: EventSource.system,
   });
 
-  await triggerDunningWorkflow(contract.id, reason, { failureCode });
+  await triggerDunningWorkflow(contractId, reason, { failureCode });
 }

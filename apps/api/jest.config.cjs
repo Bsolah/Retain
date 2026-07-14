@@ -3,9 +3,10 @@ module.exports = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
+  resolver: '<rootDir>/jest.resolver.cjs',
   moduleNameMapper: {
     '^@retain/database$': '<rootDir>/../../packages/database/src/index.ts',
-    '^@retain/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+    '^@retain/shared$': '<rootDir>/../../packages/shared/dist/index.js',
     '^.+/factories/shop\\.js$': '<rootDir>/../../factories/shop.ts',
     '^\\.\\./\\.\\./\\.\\./graphql/auth\\.js$': '<rootDir>/src/graphql/auth.ts',
     '^\\.\\./\\.\\./\\.\\./context\\.js$': '<rootDir>/src/context.ts',
@@ -39,7 +40,10 @@ module.exports = {
     '^(\\.\\./)+generated/graphql\\.js$': '<rootDir>/src/generated/graphql.ts',
     '^(\\.\\./)+version\\.js$': '<rootDir>/src/version.ts',
     '^\\./shopify-client\\.js$': '<rootDir>/src/services/shopify-client.ts',
-    '^\\./billing-policy\\.js$': '<rootDir>/src/services/billing-policy.ts',
+    // Do not map '^\\./billing-policy\\.js$' — it hijacks @retain/shopify-admin internals.
+    '^\\.\\./billing-policy\\.js$': '<rootDir>/src/services/billing-policy.ts',
+    '^(\\.\\./)+services/billing-policy\\.js$':
+      '<rootDir>/src/services/billing-policy.ts',
     '^\\./events\\.js$': '<rootDir>/src/services/events.ts',
     '^\\./dunning\\.js$': '<rootDir>/src/services/dunning.ts',
     '^(\\.\\./)+auth\\.js$': '<rootDir>/src/graphql/auth.ts',

@@ -320,10 +320,23 @@ async function applyPaidSubscriptionOrderCharge(
       order.contract.shopifyContractId,
       normalizedOrderGid,
     );
-  } catch {
-    // Renewal may still work if Shopify vaulted the card on the customer;
-    // local activation already succeeded.
+  } catch (error) {
+    console.warn(
+      '[subscription-order-payment] failed to attach payment method after first pay',
+      {
+        contractId: order.contractId,
+        orderId: normalizedOrderGid,
+        error: error instanceof Error ? error.message : error,
+      },
+    );
   }
+
+  // Clear sticky first-invoice attempt so the hourly scheduler can create
+  // a fresh SubscriptionBillingAttempt on the next cycle.
+  await prisma.subscriptionContract.update({
+    where: { id: order.contractId },
+    data: { lastBillingAttemptId: null },
+  });
 
   return true;
 }
@@ -390,7 +403,35 @@ const SUBSCRIPTION_DRAFT_COMMIT = `#graphql
 /**
  * After a payment-link order is paid, copy the customer's vaulted payment
  * method onto the subscription contract so renewals can charge.
+ * Returns true when the contract already has a PM or one was attached.
  */
+export async function ensureContractPaymentMethod(
+  shop: Shop,
+  contractGid: string,
+): Promise<boolean> {
+  if (contractGid.includes('/migrated-')) {
+    return false;
+  }
+  try {
+    await attachCustomerPaymentMethodToContract(shop, contractGid, '');
+    const data = await shopifyAdminGraphql<{
+      subscriptionContract: {
+        customerPaymentMethod: { id: string } | null;
+      } | null;
+    }>(shop, CONTRACT_PAYMENT_METHOD_QUERY, { id: contractGid });
+    return Boolean(data.subscriptionContract?.customerPaymentMethod?.id);
+  } catch (error) {
+    console.warn(
+      '[subscription-order-payment] ensureContractPaymentMethod failed',
+      {
+        contractGid,
+        error: error instanceof Error ? error.message : error,
+      },
+    );
+    return false;
+  }
+}
+
 async function attachCustomerPaymentMethodToContract(
   shop: Shop,
   contractGid: string,
